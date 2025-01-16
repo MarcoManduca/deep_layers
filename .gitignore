@@ -1,0 +1,6 @@
+
+# training
+data/training/irr/*.jpg
+data/training/rgb/*.jpg
+
+__pycache__

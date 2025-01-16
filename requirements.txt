@@ -1,0 +1,7 @@
+
+numpy>=1.21.0
+tensorflow>=2.9.0
+tensorflow-metal>=1.1.0
+keras>=3.7.0
+opencv-python>=4.5.0
+matplotlib>=3.4.0
