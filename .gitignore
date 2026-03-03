@@ -1,0 +1,37 @@
+
+# training data
+data/training/ir/*.jpg
+data/training/rgb/*.jpg
+
+# test data
+data/test/ir/*.jpg
+data/test/rgb/*.jpg
+data/test/generated/*.jpg
+
+!data/test/ir/05.jpg
+!data/test/rgb/05.jpg
+!data/test/generated/05.jpg
+!data/test/generated/05_diff.jpg
+
+# models and caches
+models/*.keras
+checkpoints/
+__pycache__/
+
+# environments and local config
+.env
+.venv/
+venv/
+
+# OS / editor noise
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+
+# documentation
+docs/
+
+#other
+deep_layers/models_old.py
+commands.txt
