@@ -1,0 +1,14 @@
+tensorflow==2.16.2
+tensorflow-metal
+numpy
+pillow
+matplotlib
+scikit-learn
+scikit-image
+tqdm
+jupyter
+pydantic>=2.0
+pydantic-settings
+ruff
+pytest
+pytest-cov

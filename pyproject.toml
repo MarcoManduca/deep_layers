@@ -1,0 +1,20 @@
+[project]
+name = "deep-layers"
+version = "0.1.0"
+description = "RGB to IR image translation pipeline for reflectography"
+requires-python = ">=3.11.5"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
