@@ -5,6 +5,33 @@ from collections.abc import Callable
 import tensorflow as tf
 
 
+# ---------------------------------------------------------------------------
+# Helpers (Laplacian pyramid)
+# ---------------------------------------------------------------------------
+
+
+def _downsample(x: tf.Tensor) -> tf.Tensor:
+    return tf.nn.avg_pool2d(x, ksize=2, strides=2, padding="VALID")
+
+
+def _upsample_to(low: tf.Tensor, ref: tf.Tensor) -> tf.Tensor:
+    h = tf.shape(ref)[1]
+    w = tf.shape(ref)[2]
+    return tf.image.resize(low, [h, w], method="bilinear")
+
+
+def _laplacian_detail(x: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+    """Return (detail, low) where detail = x − upsample(downsample(x))."""
+    low = _downsample(x)
+    detail = x - _upsample_to(low, x)
+    return detail, low
+
+
+# ---------------------------------------------------------------------------
+# Loss functions
+# ---------------------------------------------------------------------------
+
+
 def combined_loss(alpha: float = 0.7) -> Callable:
     """Return a combined MAE + (1 - SSIM) loss function.
 
@@ -35,4 +62,126 @@ def combined_loss(alpha: float = 0.7) -> Callable:
         return alpha * mae + (1.0 - alpha) * (1.0 - ssim)
 
     loss.__name__ = "combined_loss"
+    return loss
+
+
+def laplacian_pyramid_loss(
+    levels: int = 4,
+    weights: list[float] | None = None,
+) -> Callable:
+    """Return a multi-scale Laplacian pyramid loss.
+
+    Decomposes both ``y_true`` and ``y_pred`` into a Laplacian pyramid
+    and sums the mean absolute error at each scale.  High-frequency
+    levels receive larger weights by default (geometric sequence
+    ``2^(levels-1), …, 1``), making the loss sensitive to fine detail
+    — the spatial frequency band where underdrawing strokes live.
+
+    Parameters
+    ----------
+    levels : int
+        Number of pyramid levels.
+    weights : list[float] or None
+        Per-level weights (length ``levels``), applied from finest to
+        coarsest.  Normalised to sum to 1.  Defaults to a geometric
+        sequence that halves each level.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor``.
+    """
+    if weights is None:
+        raw = [2 ** (levels - 1 - i) for i in range(levels)]
+        total = sum(raw)
+        weights = [w / total for w in raw]
+
+    def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        level_losses: list[tf.Tensor] = []
+        x_true, x_pred = y_true, y_pred
+        for i in range(levels):
+            detail_true, x_true = _laplacian_detail(x_true)
+            detail_pred, x_pred = _laplacian_detail(x_pred)
+            level_losses.append(
+                weights[i] * tf.reduce_mean(tf.abs(detail_true - detail_pred))
+            )
+        return tf.add_n(level_losses)
+
+    loss.__name__ = "laplacian_pyramid_loss"
+    return loss
+
+
+def fft_loss() -> Callable:
+    """Return a frequency-domain magnitude spectrum loss.
+
+    Computes the mean absolute difference between the 2D FFT magnitude
+    spectra of ``y_true`` and ``y_pred``.  Unlike pixel-wise losses,
+    this term penalises spectral errors uniformly across all frequencies,
+    preventing the model from sacrificing high-frequency accuracy to
+    minimise low-frequency error.
+
+    The loss is normalised by image area to remain comparable across
+    different input sizes.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor``.
+    """
+
+    def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        yt = tf.squeeze(y_true, axis=-1)   # (B, H, W)
+        yp = tf.squeeze(y_pred, axis=-1)
+
+        mag_true = tf.abs(tf.signal.rfft2d(yt))
+        mag_pred = tf.abs(tf.signal.rfft2d(yp))
+
+        h = tf.cast(tf.shape(y_true)[1], tf.float32)
+        w = tf.cast(tf.shape(y_true)[2], tf.float32)
+        return tf.reduce_mean(tf.abs(mag_true - mag_pred)) / (h * w)
+
+    loss.__name__ = "fft_loss"
+    return loss
+
+
+def combined_loss_advanced(
+    alpha: float = 0.5,
+    beta: float = 0.3,
+    gamma: float = 0.2,
+    laplacian_levels: int = 4,
+) -> Callable:
+    """Return a combined MAE + Laplacian pyramid + FFT loss.
+
+    Designed for the EfficientNet UNet where a pretrained encoder
+    provides richer features; the additional frequency-domain terms
+    recover the high-frequency detail that MAE tends to suppress.
+
+    The loss is defined as::
+
+        loss = alpha * MAE + beta * Laplacian + gamma * FFT
+
+    Parameters
+    ----------
+    alpha : float
+        Weight for the pixel-wise MAE term.
+    beta : float
+        Weight for the Laplacian pyramid term.
+    gamma : float
+        Weight for the FFT magnitude term.
+    laplacian_levels : int
+        Number of Laplacian pyramid levels.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor``.
+    """
+    _lap = laplacian_pyramid_loss(levels=laplacian_levels)
+    _fft = fft_loss()
+
+    def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        mae = tf.reduce_mean(tf.abs(y_true - y_pred))
+        return alpha * mae + beta * _lap(y_true, y_pred) + gamma * _fft(y_true, y_pred)
+
+    loss.__name__ = "combined_loss_advanced"
     return loss

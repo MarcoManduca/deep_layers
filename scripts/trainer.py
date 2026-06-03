@@ -5,7 +5,8 @@ from pathlib import Path
 import tensorflow as tf
 
 from scripts.attention_unet import build_attention_unet
-from scripts.losses import combined_loss
+from scripts.efficientnet_unet import build_efficientnet_unet
+from scripts.losses import combined_loss, combined_loss_advanced
 from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
@@ -14,6 +15,7 @@ _BUILDERS = {
     "unet": build_unet,
     "resunet": build_resunet,
     "attention_unet": build_attention_unet,
+    "efficientnet_unet": build_efficientnet_unet,
 }
 
 
@@ -23,7 +25,8 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
     Parameters
     ----------
     arch_name : str
-        One of ``"unet"``, ``"resunet"``, ``"attention_unet"``.
+        One of ``"unet"``, ``"resunet"``, ``"attention_unet"``,
+        ``"efficientnet_unet"``.
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``).
@@ -50,8 +53,9 @@ def compile_model(
     model: tf.keras.Model,
     lr: float = 1e-4,
     loss_alpha: float = 0.7,
+    advanced_loss: bool = False,
 ) -> tf.keras.Model:
-    """Compile a model with Adam and the combined MAE + (1 - SSIM) loss.
+    """Compile a model with Adam and the selected loss function.
 
     Parameters
     ----------
@@ -60,16 +64,24 @@ def compile_model(
     lr : float
         Initial Adam learning rate.
     loss_alpha : float
-        MAE weight in the combined loss.
+        MAE weight in the combined loss.  Ignored when
+        ``advanced_loss=True``.
+    advanced_loss : bool
+        If ``True``, use :func:`scripts.losses.combined_loss_advanced`
+        (MAE + Laplacian + FFT).  Recommended for
+        ``"efficientnet_unet"``.  Defaults to ``False``.
 
     Returns
     -------
     tf.keras.Model
         Compiled model (modified in-place and returned).
     """
+    loss_fn = (
+        combined_loss_advanced() if advanced_loss else combined_loss(alpha=loss_alpha)
+    )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-        loss=combined_loss(alpha=loss_alpha),
+        loss=loss_fn,
         metrics=[
             tf.keras.metrics.MeanAbsoluteError(name="mae"),
             SSIMMetric(),
@@ -137,6 +149,7 @@ def load_model(
     model_dir: Path,
     lr: float = 1e-4,
     loss_alpha: float = 0.7,
+    advanced_loss: bool = False,
 ) -> tf.keras.Model:
     """Load the best checkpoint for an architecture and recompile it.
 
@@ -153,7 +166,10 @@ def load_model(
     lr : float
         Learning rate for recompilation.
     loss_alpha : float
-        MAE weight for recompilation.
+        MAE weight for recompilation.  Ignored when
+        ``advanced_loss=True``.
+    advanced_loss : bool
+        Must match the value used at training time.
 
     Returns
     -------
@@ -172,4 +188,4 @@ def load_model(
             "Run training first."
         )
     model = tf.keras.models.load_model(str(model_path), compile=False)
-    return compile_model(model, lr=lr, loss_alpha=loss_alpha)
+    return compile_model(model, lr=lr, loss_alpha=loss_alpha, advanced_loss=advanced_loss)
