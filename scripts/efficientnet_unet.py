@@ -14,6 +14,27 @@ _SKIP_LAYER_NAMES: list[str] = [
 _BOTTLENECK_LAYER: str = "top_activation"  # H/32, W/32, 1280 ch
 
 
+@tf.keras.utils.register_keras_serializable(package="deep_layers")
+class _ResizeToMatch(layers.Layer):
+    """Bilinear-resize ``x`` to the spatial dimensions of ``ref``.
+
+    EfficientNet's stride-2 depthwise convolutions round spatial dimensions
+    down (e.g. 25 → 12), while ``Conv2DTranspose(stride=2)`` doubles
+    exactly (12 → 24).  The resulting ±1-pixel discrepancy with the skip
+    connection (25) would crash ``Concatenate``.  This layer resolves it
+    dynamically at runtime without any static shape assumptions.
+
+    The ``register_keras_serializable`` decorator is required so that
+    ``tf.keras.models.load_model`` can reconstruct this layer from a
+    saved ``.keras`` checkpoint without needing ``custom_objects``.
+    """
+
+    def call(self, inputs: list[tf.Tensor]) -> tf.Tensor:
+        x, ref = inputs
+        target = tf.shape(ref)[1:3]
+        return tf.image.resize(x, target, method="bilinear")
+
+
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """Two consecutive Conv → BN → ReLU operations.
 
@@ -100,8 +121,11 @@ def build_efficientnet_unet(
     x = _conv_block(x, decoder_filters[0])
 
     # Decoder: four upsampling stages paired with encoder skip connections.
+    # _ResizeToMatch corrects ±1-pixel spatial mismatches caused by
+    # EfficientNet's floor-rounding in stride-2 depthwise convolutions.
     for f, skip in zip(decoder_filters[1:], [s4, s3, s2, s1]):
         x = layers.Conv2DTranspose(f, 2, strides=2, padding="same")(x)
+        x = _ResizeToMatch()([x, skip])
         x = layers.Concatenate()([x, skip])
         x = _conv_block(x, f)
 

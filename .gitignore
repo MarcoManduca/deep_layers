@@ -1,6 +1,7 @@
 # Dataset (stored locally, not versioned)
 data/ir/*
 data/rgb/*
+data/test/*
 
 # Training outputs
 logs/

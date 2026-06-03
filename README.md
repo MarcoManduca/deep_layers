@@ -4,6 +4,21 @@ Deep learning pipeline for RGB → infrared (IR) image translation applied to **
 
 ---
 
+## Example painting
+
+RGB » IR » Predicted IR » Delta (Clahe)
+
+<table width="100%">
+  <tr>
+    <td align="center" width="25%"><img src="assets/examples/00_rgb.jpg" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/00_ir.jpg" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/00_efficientnet_unet_predicted_ir.jpg" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/00_efficientnet_unet_delta_clahe.jpg" width="100%"/></td>
+  </tr>
+</table>
+
+---
+
 ## Methodology
 
 ### Problem framing
@@ -20,23 +35,42 @@ isolates regions where the observed IR deviates from what the model expects give
 
 ### Architectures
 
-Three encoder–decoder architectures are implemented and benchmarked:
+Four encoder–decoder architectures are implemented and benchmarked:
 
-| Architecture | Key feature |
-|---|---|
-| **UNet** | Standard skip connections; solid baseline |
-| **ResUNet** | Residual blocks in encoder/decoder; better gradient flow on small datasets |
-| **Attention UNet** | Additive attention gates on skip connections; suppresses irrelevant background features |
+| Architecture | Key feature | Ref. |
+|---|---|---|
+| **UNet** | Standard skip connections; solid baseline | [1] |
+| **ResUNet** | Residual blocks in encoder/decoder; better gradient flow on small datasets | [2, 3] |
+| **Attention UNet** | Additive attention gates on skip connections; suppresses irrelevant background features | [4] |
+| **EfficientNet UNet** | EfficientNetB0 pretrained encoder (ImageNet); frozen weights + UNet decoder | [5, 6] |
 
 All models accept images of any spatial size at inference time (dynamic padding to the nearest multiple of 16).
+
+### Loss functions
+
+Two variants are used depending on the architecture:
+
+| Architecture | Loss | Ref. |
+|---|---|---|
+| UNet, ResUNet, Attention UNet | `combined_loss`: MAE + (1 − SSIM) | [7] |
+| EfficientNet UNet | `combined_loss_advanced`: MAE + Laplacian pyramid + FFT magnitude | [8, 9] |
+
+**Laplacian pyramid loss** decomposes the prediction error into spatial frequency bands and weights finer detail more heavily (geometric sequence: weight at level `k` = `2^(N−1−k)`, normalised). High-frequency bands — where underdrawing strokes live — receive the largest penalty.
+
+**FFT magnitude loss** penalises errors in the 2D Fourier magnitude spectrum uniformly across all frequencies, preventing the model from sacrificing high-frequency accuracy to minimise low-frequency error. Loss is normalised by image area to remain scale-invariant.
 
 ### Training
 
 - **Input**: RGB image `(H, W, 3)`, values normalised to `[0, 1]`
 - **Target**: IR image `(H, W, 1)`, grayscale, values normalised to `[0, 1]`
-- **Loss**: combined MAE + (1 − SSIM), weighted by `LOSS_ALPHA` (default 0.7)
-- **Augmentation**: random horizontal/vertical flips applied to both channels; brightness/contrast jitter on RGB only (IR reflectance is a physical property, not an illumination artifact)
+- **Optimiser**: Adam [10]
+- **Regularisation**: Batch Normalisation [11] throughout; EarlyStopping + ReduceLROnPlateau callbacks
+- **Augmentation**: random horizontal/vertical flips applied to both channels; brightness/contrast jitter on RGB only (IR reflectance is a physical property, not an illumination artefact)
 - **Data split**: by artwork ID — all sections of the same painting are assigned to a single fold, preventing leakage between train, validation, and test sets
+
+### Inference
+
+For images larger than the training patch size, `predict_with_overlap` in `scripts/inference_utils.py` splits the input into overlapping square patches (default stride = 50 %), runs the model on each, and blends predictions with per-pixel Gaussian weights. This eliminates the hard seam artefacts that arise from non-overlapping stitching.
 
 ---
 
@@ -45,29 +79,31 @@ All models accept images of any spatial size at inference time (dynamic padding 
 ```
 deep_layers/
 ├── data/
-│   ├── ir/                     # Infrared images (not versioned)
-│   └── rgb/                    # RGB images (not versioned)
-├── models/                     # Saved checkpoints: {arch}/best_model.keras
-├── logs/                       # TensorBoard event files
+│   ├── ir/                       # Infrared images (not versioned)
+│   └── rgb/                      # RGB images (not versioned)
+├── models/                       # Saved checkpoints: {arch}/best_model.keras
+├── logs/                         # TensorBoard event files
 ├── notebooks/
-│   ├── 010_eda.ipynb           # Dataset exploration and split validation
-│   ├── 020_training.ipynb      # Train all three architectures
-│   ├── 030_evaluation.ipynb    # Quantitative comparison on the test set
-│   └── 040_inference.ipynb     # Inference and delta/underdrawing visualisation
+│   ├── 010_eda.ipynb             # Dataset exploration and split validation
+│   ├── 020_training.ipynb        # Train all four architectures
+│   ├── 030_evaluation.ipynb      # Quantitative comparison on the test set
+│   └── 040_inference.ipynb       # Inference, delta visualisation, overlap inference
 ├── scripts/
-│   ├── config.py               # Pydantic settings (paths, hyperparameters)
-│   ├── dataset.py              # Pair loading, grouped split, tf.data pipeline
-│   ├── augmentation.py         # TF-native augmentation
-│   ├── unet.py                 # UNet model
-│   ├── resunet.py              # ResUNet model
-│   ├── attention_unet.py       # Attention UNet model
-│   ├── losses.py               # Combined MAE + (1 − SSIM) loss
-│   ├── metrics.py              # PSNR and SSIM Keras metric wrappers
-│   ├── trainer.py              # Model factory, compilation, callbacks, checkpoint loading
-│   └── visualization.py        # Plotting utilities
-├── pyproject.toml              # Ruff and pytest configuration
-├── requirements.txt            # Python dependencies
-└── LICENSE                     # CC BY-SA 4.0
+│   ├── config.py                 # Pydantic settings (paths, hyperparameters)
+│   ├── dataset.py                # Pair loading, grouped split, tf.data pipeline
+│   ├── augmentation.py           # TF-native augmentation
+│   ├── unet.py                   # UNet [1]
+│   ├── resunet.py                # ResUNet [2, 3]
+│   ├── attention_unet.py         # Attention UNet [4]
+│   ├── efficientnet_unet.py      # EfficientNet UNet [5, 6]
+│   ├── losses.py                 # combined_loss [7] · combined_loss_advanced [8, 9]
+│   ├── metrics.py                # PSNR and SSIM Keras metric wrappers
+│   ├── inference_utils.py        # Patch overlap inference with Gaussian blending
+│   ├── trainer.py                # Model factory, compilation, callbacks, checkpoint loading
+│   └── visualization.py          # Plotting utilities
+├── pyproject.toml                # Ruff and pytest configuration
+├── requirements.txt              # Python dependencies
+└── LICENSE                       # CC BY-SA 4.0
 ```
 
 ---
@@ -92,10 +128,10 @@ On Apple Silicon, `tensorflow-metal` (included in `requirements.txt`) enables GP
 Execute them in order from the `notebooks/` directory:
 
 ```
-010_eda.ipynb       → explore the dataset and validate the split
-020_training.ipynb  → train UNet, ResUNet, Attention UNet
-030_evaluation.ipynb→ compare architectures on the test set
-040_inference.ipynb → run predictions and inspect the delta heatmap
+010_eda.ipynb          → explore the dataset and validate the split
+020_training.ipynb     → train UNet, ResUNet, Attention UNet, EfficientNet UNet
+030_evaluation.ipynb   → compare all four architectures on the test set
+040_inference.ipynb    → run predictions, inspect delta heatmap, overlap inference
 ```
 
 ```bash
@@ -108,6 +144,32 @@ jupyter notebook notebooks/
 ruff check scripts/
 ruff format scripts/
 ```
+
+---
+
+## References
+
+[1] O. Ronneberger, P. Fischer, T. Brox, "U-Net: Convolutional Networks for Biomedical Image Segmentation," *MICCAI*, 2015.[https://doi.org/10.48550/arXiv.1505.04597]
+
+[2] Z. Zhang, Q. Liu, Y. Wang, "Road Extraction by Deep Residual U-Net," *IEEE Geoscience and Remote Sensing Letters*, 2018.[https://doi.org/10.48550/arXiv.1711.10684]
+
+[3] K. He, X. Zhang, S. Ren, J. Sun, "Deep Residual Learning for Image Recognition," *CVPR*, 2016.[https://doi.org/10.1109/CVPR.2016.90]
+
+[4] O. Oktay et al., "Attention U-Net: Learning Where to Look for the Pancreas," *Medical Imaging with Deep Learning (MIDL)*, 2018.[https://doi.org/10.48550/arXiv.1804.03999]
+
+[5] M. Tan, Q.V. Le, "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks," *ICML*, 2019.[https://doi.org/10.48550/arXiv.1905.11946]
+
+[6] J. Deng et al., "ImageNet: A Large-Scale Hierarchical Image Database," *CVPR*, 2009.[https://doi.org/10.1109/CVPR.2009.5206848]
+
+[7] Z. Wang, A.C. Bovik, H.R. Sheikh, E.P. Simoncelli, "Image Quality Assessment: From Error Visibility to Structural Similarity," *IEEE Transactions on Image Processing*, 2004.[https://doi.org/10.1109/TIP.2003.819861]
+
+[8] P.J. Burt, E.H. Adelson, "The Laplacian Pyramid as a Compact Image Code," *IEEE Transactions on Communications*, 1983.[https://doi.org/10.1109/TCOM.1983.1095851]
+
+[9] Y. Jiang, S. Chang, Z. Wang, "Focal Frequency Loss for Image Reconstruction and Synthesis," *ICCV*, 2021.[https://doi.org/10.48550/arXiv.2012.12821]
+
+[10] D.P. Kingma, J. Ba, "Adam: A Method for Stochastic Optimization," *ICLR*, 2015.[https://doi.org/10.48550/arXiv.1412.6980]
+
+[11] S. Ioffe, C. Szegedy, "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift," *ICML*, 2015.[https://doi.org/10.48550/arXiv.1502.03167]
 
 ---
 
