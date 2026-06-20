@@ -65,7 +65,7 @@ Two variants are used depending on the architecture:
 - **Target**: IR image `(H, W, 1)`, grayscale, values normalised to `[0, 1]`
 - **Optimiser**: Adam [10]
 - **Regularisation**: Batch Normalisation [11] throughout; EarlyStopping + ReduceLROnPlateau callbacks
-- **Augmentation**: random horizontal/vertical flips applied to both channels; brightness/contrast jitter on RGB only (IR reflectance is a physical property, not an illumination artefact)
+- **Augmentation**: random horizontal/vertical flips applied to both channels; brightness/contrast jitter on RGB only (IR reflectance is a physical property, not an illumination artefact); optional paired random crop (`CROP_SIZE`) sharing one crop box across RGB and IR. All augmentation is stateless and seeded, and runs **only** on the training split — evaluation and inference always use full images
 - **Data split**: by artwork ID — all sections of the same painting are assigned to a single fold, preventing leakage between train, validation, and test sets
 
 ### Inference
@@ -100,7 +100,10 @@ deep_layers/
 │   ├── metrics.py                # PSNR and SSIM Keras metric wrappers
 │   ├── inference_utils.py        # Patch overlap inference with Gaussian blending
 │   ├── trainer.py                # Model factory, compilation, callbacks, checkpoint loading
+│   ├── reproducibility.py        # Global RNG seeding (set_global_seed)
 │   └── visualization.py          # Plotting utilities
+├── tests/
+│   └── unit/                     # Unit tests mirroring scripts/
 ├── pyproject.toml                # Ruff and pytest configuration
 ├── requirements.txt              # Python dependencies
 └── LICENSE                       # CC BY-SA 4.0
@@ -141,8 +144,23 @@ jupyter notebook notebooks/
 ### Linting
 
 ```bash
-ruff check scripts/
-ruff format scripts/
+ruff check scripts/ tests/
+ruff format scripts/ tests/
+```
+
+### Testing
+
+Unit tests cover the pure pipeline logic (split leakage prevention, padding,
+augmentation determinism, losses, metrics, overlap inference, the loss-selection
+registry, and the convolutional architectures). The EfficientNet UNet builder is
+excluded from unit tests because instantiating it downloads ImageNet weights.
+
+```bash
+# Run the suite
+pytest
+
+# With coverage
+pytest --cov=scripts --cov-report=term-missing
 ```
 
 ---
