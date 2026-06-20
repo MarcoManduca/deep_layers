@@ -4,7 +4,6 @@ from collections.abc import Callable
 
 import tensorflow as tf
 
-
 # ---------------------------------------------------------------------------
 # Helpers (Laplacian pyramid)
 # ---------------------------------------------------------------------------
@@ -120,8 +119,12 @@ def fft_loss() -> Callable:
     preventing the model from sacrificing high-frequency accuracy to
     minimise low-frequency error.
 
-    The loss is normalised by image area to remain comparable across
-    different input sizes.
+    The real-input transform (``rfft2d``) returns only the non-redundant
+    half of the spectrum; the conjugate-symmetric half carries no extra
+    information, so the mean over the retained bins still weights every
+    frequency once.  FFT magnitudes scale with the number of pixels
+    (the DC term equals the pixel sum), so the result is divided by the
+    image area ``H * W`` to stay comparable across input sizes.
 
     Returns
     -------
@@ -130,7 +133,7 @@ def fft_loss() -> Callable:
     """
 
     def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-        yt = tf.squeeze(y_true, axis=-1)   # (B, H, W)
+        yt = tf.squeeze(y_true, axis=-1)  # (B, H, W)
         yp = tf.squeeze(y_pred, axis=-1)
 
         mag_true = tf.abs(tf.signal.rfft2d(yt))
@@ -138,7 +141,8 @@ def fft_loss() -> Callable:
 
         h = tf.cast(tf.shape(y_true)[1], tf.float32)
         w = tf.cast(tf.shape(y_true)[2], tf.float32)
-        return tf.reduce_mean(tf.abs(mag_true - mag_pred)) / (h * w)
+        area = h * w
+        return tf.reduce_mean(tf.abs(mag_true - mag_pred)) / area
 
     loss.__name__ = "fft_loss"
     return loss

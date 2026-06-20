@@ -3,6 +3,10 @@
 import numpy as np
 import tensorflow as tf
 
+# Patch side must be divisible by this so the 4-level UNets (four 2x pooling
+# stages) receive spatial dimensions that downsample and upsample cleanly.
+_PATCH_DIVISOR = 16
+
 
 def _gaussian_window(size: int, sigma: float | None = None) -> np.ndarray:
     """Generate a square 2D Gaussian weight window.
@@ -87,23 +91,26 @@ def predict_with_overlap(
     Raises
     ------
     ValueError
-        If ``stride`` is greater than ``patch_size``.
+        If ``patch_size`` is not a multiple of 16, or if ``stride`` is
+        greater than ``patch_size``.
     """
+    if patch_size % _PATCH_DIVISOR != 0:
+        raise ValueError(
+            f"patch_size ({patch_size}) must be a multiple of "
+            f"{_PATCH_DIVISOR}; the 4-level UNets pool by 2 four times and "
+            "require divisible spatial dimensions."
+        )
     if stride is None:
         stride = patch_size // 2
     if stride > patch_size:
-        raise ValueError(
-            f"stride ({stride}) must be ≤ patch_size ({patch_size})."
-        )
+        raise ValueError(f"stride ({stride}) must be ≤ patch_size ({patch_size}).")
 
     h, w = rgb_image.shape[:2]
 
     # Pad to at least patch_size in each dimension.
     pad_h = max(0, patch_size - h)
     pad_w = max(0, patch_size - w)
-    rgb_padded = np.pad(
-        rgb_image, ((0, pad_h), (0, pad_w), (0, 0)), mode="reflect"
-    )
+    rgb_padded = np.pad(rgb_image, ((0, pad_h), (0, pad_w), (0, 0)), mode="reflect")
     ph, pw = rgb_padded.shape[:2]
 
     prediction = np.zeros((ph, pw, 1), dtype=np.float32)

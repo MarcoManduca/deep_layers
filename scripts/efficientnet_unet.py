@@ -114,7 +114,12 @@ def build_efficientnet_unet(
     inputs = layers.Input(shape=(None, None, 3))
     # EfficientNetB0 expects [0, 255]; rescale from normalised [0, 1].
     encoder_outputs = encoder(inputs * 255.0)
-    s1, s2, s3, s4 = encoder_outputs[0], encoder_outputs[1], encoder_outputs[2], encoder_outputs[3]
+    s1, s2, s3, s4 = (
+        encoder_outputs[0],
+        encoder_outputs[1],
+        encoder_outputs[2],
+        encoder_outputs[3],
+    )
     x = encoder_outputs[4]  # H/32, 1280 ch
 
     # Bottleneck: reduce 1280 → decoder_filters[0] channels.

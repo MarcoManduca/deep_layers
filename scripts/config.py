@@ -36,6 +36,19 @@ class Settings(BaseSettings):
         Fraction of artworks assigned to the validation fold.
     LOSS_ALPHA : float
         Weight of the MAE term in the combined MAE + (1 - SSIM) loss.
+    ADV_LOSS_ALPHA : float
+        Weight of the MAE term in ``combined_loss_advanced``.
+    ADV_LOSS_BETA : float
+        Weight of the Laplacian pyramid term in ``combined_loss_advanced``.
+    ADV_LOSS_GAMMA : float
+        Weight of the FFT magnitude term in ``combined_loss_advanced``.
+    LAPLACIAN_LEVELS : int
+        Number of Laplacian pyramid levels in ``combined_loss_advanced``.
+    CROP_SIZE : int or None
+        If set, training augmentation randomly crops each pair to a square
+        of this side length (must be a multiple of ``PATCH_MULTIPLE``).
+        ``None`` disables cropping. Applied only to the augmented (training)
+        split — never at evaluation or inference.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -55,6 +68,13 @@ class Settings(BaseSettings):
     VAL_RATIO: float = 0.15
 
     LOSS_ALPHA: float = 0.7
+
+    ADV_LOSS_ALPHA: float = 0.5
+    ADV_LOSS_BETA: float = 0.3
+    ADV_LOSS_GAMMA: float = 0.2
+    LAPLACIAN_LEVELS: int = 4
+
+    CROP_SIZE: int | None = None
 
 
 settings = Settings()
