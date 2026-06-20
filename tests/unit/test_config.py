@@ -16,5 +16,7 @@ def test_patch_multiple_is_power_of_two_divisible_by_pooling() -> None:
     assert settings.PATCH_MULTIPLE % 16 == 0
 
 
-def test_crop_size_defaults_to_disabled() -> None:
-    assert settings.CROP_SIZE is None
+def test_crop_size_field_default_is_disabled() -> None:
+    # The declared default must keep cropping off; the live ``settings`` value
+    # may be overridden via ``.env``, so assert the field default directly.
+    assert settings.model_fields["CROP_SIZE"].default is None
