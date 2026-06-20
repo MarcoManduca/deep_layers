@@ -59,9 +59,7 @@ def load_image_pairs(
 
     common_stems = sorted(set(ir_files) & set(rgb_files))
     if not common_stems:
-        raise ValueError(
-            f"No matching pairs found between {ir_dir} and {rgb_dir}"
-        )
+        raise ValueError(f"No matching pairs found between {ir_dir} and {rgb_dir}")
 
     return [(rgb_files[stem], ir_files[stem]) for stem in common_stems]
 
@@ -101,9 +99,7 @@ def grouped_train_val_test_split(
     groups = [extract_artwork_id(p[0].stem) for p in pairs]
     test_ratio = 1.0 - train_ratio - val_ratio
 
-    splitter_1 = GroupShuffleSplit(
-        n_splits=1, test_size=test_ratio, random_state=seed
-    )
+    splitter_1 = GroupShuffleSplit(n_splits=1, test_size=test_ratio, random_state=seed)
     trainval_idx, test_idx = next(splitter_1.split(pairs, groups=groups))
 
     trainval_pairs = [pairs[i] for i in trainval_idx]
@@ -114,9 +110,7 @@ def grouped_train_val_test_split(
     splitter_2 = GroupShuffleSplit(
         n_splits=1, test_size=relative_val, random_state=seed
     )
-    train_idx, val_idx = next(
-        splitter_2.split(trainval_pairs, groups=trainval_groups)
-    )
+    train_idx, val_idx = next(splitter_2.split(trainval_pairs, groups=trainval_groups))
 
     train_pairs = [trainval_pairs[i] for i in train_idx]
     val_pairs = [trainval_pairs[i] for i in val_idx]
@@ -172,6 +166,7 @@ def build_dataset(
     augment: bool = False,
     shuffle: bool = False,
     seed: int = 42,
+    crop_size: int | None = None,
 ) -> tf.data.Dataset:
     """Build a ``tf.data.Dataset`` pipeline from a list of image pairs.
 
@@ -187,14 +182,27 @@ def build_dataset(
         Randomly shuffle samples before batching.
     seed : int
         Seed used for shuffling.
+    crop_size : int or None
+        If set, randomly crop each pair to ``(crop_size, crop_size)`` as part
+        of augmentation. Must be a multiple of 16 (the 4-level UNet pooling
+        factor). Has effect only when ``augment=True``; evaluation and
+        inference always run on full images.
 
     Returns
     -------
     tf.data.Dataset
         Dataset that yields ``(rgb_batch, ir_batch)`` pairs where shapes
         are ``(B, H, W, 3)`` and ``(B, H, W, 1)`` respectively.
+
+    Raises
+    ------
+    ValueError
+        If ``crop_size`` is set but is not a positive multiple of 16.
     """
     from scripts.augmentation import augment_pair
+
+    if crop_size is not None and (crop_size <= 0 or crop_size % 16 != 0):
+        raise ValueError(f"crop_size ({crop_size}) must be a positive multiple of 16.")
 
     rgb_paths = [str(p[0]) for p in pairs]
     ir_paths = [str(p[1]) for p in pairs]
@@ -207,7 +215,20 @@ def build_dataset(
     ds = ds.map(_load_pair, num_parallel_calls=tf.data.AUTOTUNE)
 
     if augment:
-        ds = ds.map(augment_pair, num_parallel_calls=tf.data.AUTOTUNE)
+        # Pair each element with a monotonic counter so the stateless
+        # augmentation seed is deterministic per sample (and varies across
+        # epochs), making the augmented stream reproducible run-to-run.
+        counter = tf.data.Dataset.counter()
+        ds = tf.data.Dataset.zip((ds, counter))
+        ds = ds.map(
+            lambda pair, c: augment_pair(
+                pair[0],
+                pair[1],
+                seed=tf.stack([seed, tf.cast(c, tf.int32)]),
+                crop_size=crop_size,
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE,
+        )
 
     ds = ds.batch(batch_size)
     ds = ds.prefetch(tf.data.AUTOTUNE)
