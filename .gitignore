@@ -29,6 +29,8 @@ htmlcov/
 
 # Secrets
 .env
+.env.*
+!.env.example
 .envrc
 
 # Tooling caches
