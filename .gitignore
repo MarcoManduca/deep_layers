@@ -14,7 +14,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-env/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -38,3 +37,7 @@ htmlcov/
 
 # IDE
 tempCodeRunnerFile.py
+
+# Claude Code local config, skills and handoff files
+.claude/
+skills-lock.json
