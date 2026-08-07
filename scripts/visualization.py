@@ -122,6 +122,46 @@ def plot_delta(
     return fig
 
 
+def plot_delta_analysis(
+    result: object,
+    title: str = "Regional delta analysis",
+) -> plt.Figure:
+    """Display the complementary maps produced by ``analyze_delta``.
+
+    Shows the raw pixel-wise delta alongside the structural delta (hidden
+    detail indicator, insensitive to substrate/acquisition gray-level
+    shifts), the per-zone distribution-shift map and the confidence map
+    (agreement between the raw and structural deltas).
+
+    Parameters
+    ----------
+    result : scripts.delta_analysis.DeltaAnalysisResult
+        Output of ``scripts.delta_analysis.analyze_delta``.
+    title : str
+        Figure title.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    fig.suptitle(title)
+
+    panels = (
+        ("Raw delta", result.raw_delta, "hot"),
+        ("Structural delta", result.structural_delta, "hot"),
+        ("Zone distribution shift", result.zone_distribution_map, "hot"),
+        ("Confidence (agreement)", result.confidence_map, "viridis"),
+    )
+    for ax, (panel_title, data, cmap) in zip(axes, panels):
+        im = ax.imshow(data, cmap=cmap)
+        ax.set_title(panel_title)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    return fig
+
+
 def plot_training_curves(
     history: dict,
     title: str = "Training history",
