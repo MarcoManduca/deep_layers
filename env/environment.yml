@@ -6,6 +6,7 @@ dependencies:
   - pip
   - pip:
       - tensorflow==2.16.2
+      - tensorflow-metal==1.2.0; sys_platform == "darwin" and platform_machine == "arm64"
       - numpy==1.26.4
       - pillow==12.2.0
       - matplotlib==3.10.9
