@@ -3,7 +3,10 @@
 from pathlib import Path
 
 import tensorflow as tf
+from PIL import Image
 from sklearn.model_selection import GroupShuffleSplit
+
+from scripts.augmentation import augment_pair
 
 
 def extract_artwork_id(filename: str) -> str:
@@ -52,7 +55,8 @@ def load_image_pairs(
     Raises
     ------
     ValueError
-        If no common filename stems exist between the two directories.
+        If no common filename stems exist between the two directories, or
+        if a matched RGB/IR pair has mismatched ``(width, height)``.
     """
     ir_files = {p.stem: p for p in sorted(ir_dir.glob("*.jpg"))}
     rgb_files = {p.stem: p for p in sorted(rgb_dir.glob("*.jpg"))}
@@ -61,7 +65,18 @@ def load_image_pairs(
     if not common_stems:
         raise ValueError(f"No matching pairs found between {ir_dir} and {rgb_dir}")
 
-    return [(rgb_files[stem], ir_files[stem]) for stem in common_stems]
+    pairs = [(rgb_files[stem], ir_files[stem]) for stem in common_stems]
+
+    for rgb_path, ir_path in pairs:
+        rgb_size = Image.open(rgb_path).size
+        ir_size = Image.open(ir_path).size
+        if rgb_size != ir_size:
+            raise ValueError(
+                f"RGB/IR size mismatch for '{rgb_path.stem}': "
+                f"RGB is {rgb_size} but IR is {ir_size}"
+            )
+
+    return pairs
 
 
 def grouped_train_val_test_split(
@@ -199,8 +214,6 @@ def build_dataset(
     ValueError
         If ``crop_size`` is set but is not a positive multiple of 16.
     """
-    from scripts.augmentation import augment_pair
-
     if crop_size is not None and (crop_size <= 0 or crop_size % 16 != 0):
         raise ValueError(f"crop_size ({crop_size}) must be a positive multiple of 16.")
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import tensorflow as tf
+from PIL import Image
 
 from scripts.dataset import (
     build_dataset,
@@ -42,6 +43,19 @@ def test_load_image_pairs_returns_all_matching_pairs(
     # Assert
     assert len(pairs) == n_pairs
     assert all(rgb.stem == ir.stem for rgb, ir in pairs)
+
+
+def test_load_image_pairs_raises_on_size_mismatch(
+    image_pairs_dir: tuple[Path, Path],
+) -> None:
+    # Arrange
+    rgb_dir, ir_dir = image_pairs_dir
+    mismatched = np.zeros((8, 8), dtype=np.uint8)
+    Image.fromarray(mismatched, mode="L").save(ir_dir / "a1_sezione_0.jpg")
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="size mismatch"):
+        load_image_pairs(ir_dir, rgb_dir)
 
 
 def test_load_image_pairs_raises_when_no_common_stems(tmp_path: Path) -> None:
