@@ -4,7 +4,7 @@ from pathlib import Path
 
 import tensorflow as tf
 from PIL import Image
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 from scripts.augmentation import augment_pair
 
@@ -129,6 +129,92 @@ def grouped_train_val_test_split(
 
     train_pairs = [trainval_pairs[i] for i in train_idx]
     val_pairs = [trainval_pairs[i] for i in val_idx]
+
+    return train_pairs, val_pairs, test_pairs
+
+
+def mockup_aware_train_val_test_split(
+    pairs: list[tuple[Path, Path]],
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15,
+    mockup_ids: list[str] | None = None,
+    mockup_test_ratio: float = 0.05,
+    seed: int = 42,
+) -> tuple[
+    list[tuple[Path, Path]],
+    list[tuple[Path, Path]],
+    list[tuple[Path, Path]],
+]:
+    """Split image pairs into train / val / test, treating mockup groups apart.
+
+    Some artwork IDs are not real paintings but synthetic paint-on-support
+    mockups created specifically to aid training (see ``config.MOCKUP_ARTWORK_IDS``).
+    Unlike real artworks, holding an entire mockup group out for test would
+    both waste useful training signal and is not needed to prevent leakage,
+    since these groups exist to be learned from rather than generalized to.
+
+    Real artworks (any ID not in ``mockup_ids``) are split with
+    ``grouped_train_val_test_split``, keeping every section of an artwork in a
+    single fold. Mockup groups are instead split at the individual pair level
+    with ``mockup_test_ratio`` sent to test (default 5%) and the remainder
+    split between train/val according to ``train_ratio``/``val_ratio`` — so
+    each mockup group ends up (almost entirely) in train/val, with only a
+    small sample held out for test. The two splits are then concatenated.
+
+    Parameters
+    ----------
+    pairs : list[tuple[Path, Path]]
+        Sorted list of ``(rgb_path, ir_path)`` tuples.
+    train_ratio : float
+        Fraction of real artworks, and of each mockup group's non-test
+        remainder, assigned to the training fold.
+    val_ratio : float
+        Fraction of real artworks, and of each mockup group's non-test
+        remainder, assigned to the validation fold.
+    mockup_ids : list[str] or None
+        Artwork IDs to treat as mockups. Defaults to
+        ``config.settings.MOCKUP_ARTWORK_IDS``.
+    mockup_test_ratio : float
+        Fraction of mockup pairs sent to test (per mockup group, at the pair
+        level, not the group level).
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    tuple[list, list, list]
+        ``(train_pairs, val_pairs, test_pairs)``
+    """
+    if mockup_ids is None:
+        from scripts.config import settings
+
+        mockup_ids = settings.MOCKUP_ARTWORK_IDS
+    mockup_ids = set(mockup_ids)
+
+    groups = [extract_artwork_id(p[0].stem) for p in pairs]
+    mockup_pairs = [p for p, g in zip(pairs, groups) if g in mockup_ids]
+    artwork_pairs = [p for p, g in zip(pairs, groups) if g not in mockup_ids]
+
+    train_pairs, val_pairs, test_pairs = [], [], []
+    if artwork_pairs:
+        artwork_train, artwork_val, artwork_test = grouped_train_val_test_split(
+            artwork_pairs, train_ratio=train_ratio, val_ratio=val_ratio, seed=seed
+        )
+        train_pairs += artwork_train
+        val_pairs += artwork_val
+        test_pairs += artwork_test
+
+    if mockup_pairs:
+        mockup_trainval, mockup_test = train_test_split(
+            mockup_pairs, test_size=mockup_test_ratio, random_state=seed
+        )
+        relative_val = val_ratio / (train_ratio + val_ratio)
+        mockup_train, mockup_val = train_test_split(
+            mockup_trainval, test_size=relative_val, random_state=seed
+        )
+        train_pairs += mockup_train
+        val_pairs += mockup_val
+        test_pairs += mockup_test
 
     return train_pairs, val_pairs, test_pairs
 

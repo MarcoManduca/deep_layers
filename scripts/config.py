@@ -34,6 +34,12 @@ class Settings(BaseSettings):
         Fraction of artworks assigned to the training fold.
     VAL_RATIO : float
         Fraction of artworks assigned to the validation fold.
+    MOCKUP_ARTWORK_IDS : list[str]
+        Artwork IDs that are synthetic paint-on-support mockups created
+        specifically to aid training (not real artworks to generalize to).
+        Used by ``dataset.mockup_aware_train_val_test_split`` to keep almost
+        all of their sections in train/val instead of holding entire groups
+        out for test.
     LOSS_ALPHA : float
         Weight of the MAE term in the combined MAE + (1 - SSIM) loss.
     ADV_LOSS_ALPHA : float
@@ -66,6 +72,15 @@ class Settings(BaseSettings):
 
     TRAIN_RATIO: float = 0.70
     VAL_RATIO: float = 0.15
+
+    MOCKUP_ARTWORK_IDS: list[str] = [
+        "tblu",
+        "tbianco",
+        "tbruno",
+        "tgiallo",
+        "trosso",
+        "tverde",
+    ]
 
     LOSS_ALPHA: float = 0.7
 
