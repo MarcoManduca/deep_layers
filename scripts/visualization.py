@@ -82,7 +82,7 @@ def plot_predictions(
 def plot_delta(
     ir_real: np.ndarray,
     ir_pred: np.ndarray,
-    cmap: str = "hot",
+    cmap: str = "gray",
     title: str = "IR Delta (|real − predicted|)",
 ) -> plt.Figure:
     """Plot the absolute pixel-wise delta between real and predicted IR.
@@ -148,10 +148,10 @@ def plot_delta_analysis(
     fig.suptitle(title)
 
     panels = (
-        ("Raw delta", result.raw_delta, "hot"),
-        ("Structural delta", result.structural_delta, "hot"),
-        ("Zone distribution shift", result.zone_distribution_map, "hot"),
-        ("Confidence (agreement)", result.confidence_map, "viridis"),
+        ("Raw delta", result.raw_delta, "gray"),
+        ("Structural delta", result.structural_delta, "gray"),
+        ("Zone distribution shift", result.zone_distribution_map, "gray"),
+        ("Confidence (agreement)", result.confidence_map, "gray"),
     )
     for ax, (panel_title, data, cmap) in zip(axes, panels):
         im = ax.imshow(data, cmap=cmap)
