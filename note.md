@@ -64,6 +64,20 @@ Instead of a single delta map, produce 2-3 complementary maps:
 
 to help the conservator distinguish acquisition noise from real signal.
 
+## Implementation status
+
+- §1, §3 and §4 are implemented as post-hoc analysis in
+  `scripts/delta_analysis.py` (`analyze_delta`), visualised by
+  `plot_delta_analysis` and driven from `notebooks/050_delta_analysis.ipynb`.
+- §2 is additionally implemented as a **training objective**:
+  `scripts.losses.combined_loss_normalized` (MAE + per-window z-score).
+  It is registered in `trainer._ARCH_LOSSES` as `LossName.NORMALIZED` but
+  not yet assigned to any architecture. Its window parameters, weights and
+  the standard-deviation floor live in `Settings`; the floor and the weight
+  ratio were set from measurements on the project's own IR set rather than
+  chosen by hand. See the loss docstring for the two properties that
+  constrain how it may be used (affine invariance, term-scale mismatch).
+
 ## Placement in the project
 
 A separate analysis module (e.g. a future `scripts/delta_analysis.py`),
