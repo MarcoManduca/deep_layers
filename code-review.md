@@ -199,3 +199,66 @@ Spectral Recovery Challenge.
 - Y. Cai et al., *"MST++: Multi-stage Spectral-wise Transformer for
   Efficient Spectral Reconstruction,"* CVPRW, 2022.
   https://doi.org/10.48550/arXiv.2204.07908
+
+### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence)
+
+Motivation: the RGB→IR mapping is inherently one-to-many — pigments that
+look alike in visible light can have markedly different IR reflectance, so
+a single deterministic prediction per pixel forces the network to average
+over genuinely ambiguous cases. This direction replaces the current
+single-channel, deterministic output (`Conv2D(1, 1, activation="sigmoid")`,
+identical across all four architectures) with a two-channel head predicting
+both a mean `μ` (the expected IR value, same role as today's output) and a
+log-variance `log σ²` (the network's own learned estimate of how ambiguous
+that RGB context has historically been). Trained with a Gaussian
+negative-log-likelihood loss instead of `combined_loss`/
+`combined_loss_advanced`:
+
+```
+L = 0.5 * exp(-log_var) * (y_true - mu) ** 2 + 0.5 * log_var
+```
+
+Architecturally this is minimally invasive — only the final `1×1` conv of
+each of the four encoder–decoders changes (an extra parallel `Conv2D(1, 1)`
+branch for `log_var`, concatenated with the existing `mu` branch); no
+change to the shared encoder/decoder trunks. `SSIMMetric`/`PSNRMetric`
+(`scripts/metrics.py`) would need to slice out the `mu` channel before
+comparing against `y_true`, since only `mu` is an image-shaped prediction.
+
+Payoff for this project specifically: at inference the learned `σ` gives a
+principled, color/context-conditioned normalization for the delta signal —
+`z = (real_IR - mu) / sigma` — as an alternative or complement to the fixed
+Gaussian-window normalization currently used in `delta_analysis.py`. A real
+IR pixel within a small `z` is unremarkable for that pigment even if the
+raw delta is large (that color is known to be variable); a pixel at large
+`z` is a genuine anomaly candidate (underdrawing/pentimento) even where the
+raw delta is modest. Crucially, `σ` is learned from RGB context alone and
+never conditioned on the real IR value at inference time, so it cannot
+"explain away" real anomalies the way a ground-truth-conditioned
+hypothesis-selection scheme would.
+
+Known training pitfall: naively minimizing the Gaussian NLL from scratch is
+prone to instability — the network can trivially lower the loss early on by
+inflating `σ` everywhere instead of learning an accurate `μ` (a form of
+gradient starvation on the mean branch). The standard mitigations are a
+warm-start (train `mu` alone with the current deterministic loss for the
+first epochs, before enabling the variance branch/NLL) and/or a modified
+loss that down-weights the variance term early in training.
+
+- D.A. Nix, A.S. Weigend, *"Estimating the mean and variance of the target
+  probability distribution,"* IEEE ICNN, 1994.
+  https://doi.org/10.1109/ICNN.1994.374138 — original formulation of a
+  neural network predicting both mean and variance of its target, trained
+  with Gaussian NLL.
+- A. Kendall, Y. Gal, *"What Uncertainties Do We Need in Bayesian Deep
+  Learning for Computer Vision?,"* NeurIPS, 2017.
+  https://doi.org/10.48550/arXiv.1703.04977 — the modern formulation used
+  here (log-variance parameterization for numerical stability, aleatoric
+  vs. epistemic uncertainty), standard reference for heteroscedastic heads
+  in vision regression tasks.
+- M. Seitzer, A. Tavakoli, D. Antic, G. Martius, *"On the Pitfalls of
+  Heteroscedastic Uncertainty Estimation with Probabilistic Neural
+  Networks,"* ICLR, 2022. https://doi.org/10.48550/arXiv.2203.09168 —
+  documents the variance-inflation/gradient-starvation training instability
+  described above and proposes a corrective (β-NLL) loss weighting;
+  directly relevant if the plain NLL proves hard to train on this dataset.
