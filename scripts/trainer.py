@@ -1,5 +1,7 @@
 """Training utilities: model factory, compilation, callbacks, and checkpoint loading."""
 
+from collections.abc import Callable
+from enum import Enum
 from pathlib import Path
 
 import tensorflow as tf
@@ -7,7 +9,11 @@ import tensorflow as tf
 from scripts.attention_unet import build_attention_unet
 from scripts.config import settings
 from scripts.efficientnet_unet import build_efficientnet_unet
-from scripts.losses import combined_loss, combined_loss_advanced
+from scripts.losses import (
+    combined_loss,
+    combined_loss_advanced,
+    combined_loss_normalized,
+)
 from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
@@ -19,14 +25,29 @@ _BUILDERS = {
     "efficientnet_unet": build_efficientnet_unet,
 }
 
-# Single source of truth for which architectures train with the advanced
-# (MAE + Laplacian + FFT) loss. Both training and checkpoint loading derive
-# the loss from here, so the two paths can never silently disagree.
-_ADVANCED_LOSS_ARCHS = frozenset({"efficientnet_unet"})
+
+class LossName(str, Enum):
+    """Identifier of a loss available to the training pipeline."""
+
+    COMBINED = "combined_loss"
+    ADVANCED = "combined_loss_advanced"
+    NORMALIZED = "combined_loss_normalized"
 
 
-def uses_advanced_loss(arch_name: str) -> bool:
-    """Return whether ``arch_name`` is trained with the advanced loss.
+# Single source of truth mapping each architecture to the loss it trains with.
+# Both training and checkpoint loading derive the loss from here, so the two
+# paths can never silently disagree. Changing an architecture's loss means
+# editing this table — the loss is never passed as a manual flag.
+_ARCH_LOSSES: dict[str, LossName] = {
+    "unet": LossName.COMBINED,
+    "resunet": LossName.COMBINED,
+    "attention_unet": LossName.COMBINED,
+    "efficientnet_unet": LossName.ADVANCED,
+}
+
+
+def get_loss_name(arch_name: str) -> LossName:
+    """Return the loss an architecture is trained with.
 
     Parameters
     ----------
@@ -35,11 +56,61 @@ def uses_advanced_loss(arch_name: str) -> bool:
 
     Returns
     -------
-    bool
-        ``True`` if the architecture uses
-        :func:`scripts.losses.combined_loss_advanced`.
+    LossName
+        Registry entry for ``arch_name``.
+
+    Raises
+    ------
+    ValueError
+        If ``arch_name`` has no registry entry.
     """
-    return arch_name in _ADVANCED_LOSS_ARCHS
+    if arch_name not in _ARCH_LOSSES:
+        raise ValueError(
+            f"No loss registered for architecture '{arch_name}'. "
+            f"Available: {list(_ARCH_LOSSES)}"
+        )
+    return _ARCH_LOSSES[arch_name]
+
+
+def build_loss(
+    loss_name: LossName, loss_alpha: float = settings.LOSS_ALPHA
+) -> Callable:
+    """Instantiate a loss function from its registry name.
+
+    All weights and window parameters are read from ``settings``, so a loss
+    is configured in exactly one place (``scripts/config.py``, overridable
+    through ``.env``).
+
+    Parameters
+    ----------
+    loss_name : LossName
+        Which loss to build.
+    loss_alpha : float
+        MAE weight for :func:`scripts.losses.combined_loss`. Ignored by the
+        other losses, which read their weights from ``settings``.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor``.
+    """
+    if loss_name is LossName.ADVANCED:
+        return combined_loss_advanced(
+            alpha=settings.ADV_LOSS_ALPHA,
+            beta=settings.ADV_LOSS_BETA,
+            gamma=settings.ADV_LOSS_GAMMA,
+            laplacian_levels=settings.LAPLACIAN_LEVELS,
+        )
+    if loss_name is LossName.NORMALIZED:
+        return combined_loss_normalized(
+            alpha=settings.NORM_LOSS_ALPHA,
+            beta=settings.NORM_LOSS_BETA,
+            window_size=settings.ZSCORE_WINDOW,
+            sigma=settings.ZSCORE_SIGMA,
+            sigma_floor=settings.ZSCORE_SIGMA_FLOOR,
+            clip_value=settings.ZSCORE_CLIP,
+        )
+    return combined_loss(alpha=loss_alpha)
 
 
 def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
@@ -79,10 +150,10 @@ def compile_model(
 ) -> tf.keras.Model:
     """Compile a model with Adam and the loss selected for its architecture.
 
-    The loss is chosen from :func:`uses_advanced_loss` — the single source
-    of truth — so callers never pass a manual ``advanced_loss`` flag that
-    could drift from training. Advanced-loss weights are read from
-    ``settings`` (``ADV_LOSS_ALPHA``/``BETA``/``GAMMA``, ``LAPLACIAN_LEVELS``).
+    The loss is resolved through :func:`get_loss_name` and :func:`build_loss`
+    — the single source of truth — so callers never pass a manual loss flag
+    that could drift from training. Every loss reads its weights from
+    ``settings``.
 
     Parameters
     ----------
@@ -93,23 +164,20 @@ def compile_model(
     lr : float
         Initial Adam learning rate.
     loss_alpha : float
-        MAE weight in :func:`scripts.losses.combined_loss`.  Ignored for
-        architectures that use the advanced loss.
+        MAE weight in :func:`scripts.losses.combined_loss`.  Ignored by the
+        other losses, which take their weights from ``settings``.
 
     Returns
     -------
     tf.keras.Model
         Compiled model (modified in-place and returned).
+
+    Raises
+    ------
+    ValueError
+        If ``arch_name`` has no entry in the loss registry.
     """
-    if uses_advanced_loss(arch_name):
-        loss_fn = combined_loss_advanced(
-            alpha=settings.ADV_LOSS_ALPHA,
-            beta=settings.ADV_LOSS_BETA,
-            gamma=settings.ADV_LOSS_GAMMA,
-            laplacian_levels=settings.LAPLACIAN_LEVELS,
-        )
-    else:
-        loss_fn = combined_loss(alpha=loss_alpha)
+    loss_fn = build_loss(get_loss_name(arch_name), loss_alpha=loss_alpha)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
         loss=loss_fn,
@@ -186,7 +254,7 @@ def load_model(
     Loading with ``compile=False`` avoids custom-object registration
     issues; the model is recompiled with the same loss and metrics used
     during training. The loss is derived from ``arch_name`` via
-    :func:`uses_advanced_loss`, so it always matches training.
+    :func:`get_loss_name`, so it always matches training.
 
     Parameters
     ----------
@@ -197,8 +265,8 @@ def load_model(
     lr : float
         Learning rate for recompilation.
     loss_alpha : float
-        MAE weight for recompilation.  Ignored for architectures that use
-        the advanced loss.
+        MAE weight for recompilation.  Ignored by architectures whose loss
+        takes its weights from ``settings``.
 
     Returns
     -------
