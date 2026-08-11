@@ -44,6 +44,22 @@ class Settings(BaseSettings):
         Weight of the FFT magnitude term in ``combined_loss_advanced``.
     LAPLACIAN_LEVELS : int
         Number of Laplacian pyramid levels in ``combined_loss_advanced``.
+    NORM_LOSS_ALPHA : float
+        Weight of the MAE term in ``combined_loss_normalized``.
+    NORM_LOSS_BETA : float
+        Weight of the per-window z-score term in ``combined_loss_normalized``.
+        Not on the same scale as ``NORM_LOSS_ALPHA``: the normalised term runs
+        roughly 9x larger than MAE on real predictions.
+    ZSCORE_WINDOW : int
+        Side length of the Gaussian window used by ``local_zscore_loss``.
+    ZSCORE_SIGMA : float
+        Standard deviation of that Gaussian window.
+    ZSCORE_SIGMA_FLOOR : float
+        Lower bound on the local standard deviation used as the z-score
+        denominator; bounds the gradient in flat regions. Default is the 10th
+        percentile of the local standard deviation measured on the IR set.
+    ZSCORE_CLIP : float or None
+        Per-pixel clip on the normalised error, or ``None`` to disable.
     CROP_SIZE : int or None
         If set, training augmentation randomly crops each pair to a square
         of this side length (must be a multiple of ``PATCH_MULTIPLE``).
@@ -73,6 +89,13 @@ class Settings(BaseSettings):
     ADV_LOSS_BETA: float = 0.3
     ADV_LOSS_GAMMA: float = 0.2
     LAPLACIAN_LEVELS: int = 4
+
+    NORM_LOSS_ALPHA: float = 1.0
+    NORM_LOSS_BETA: float = 0.03
+    ZSCORE_WINDOW: int = 11
+    ZSCORE_SIGMA: float = 1.5
+    ZSCORE_SIGMA_FLOOR: float = 0.01
+    ZSCORE_CLIP: float | None = 4.0
 
     CROP_SIZE: int | None = None
 
