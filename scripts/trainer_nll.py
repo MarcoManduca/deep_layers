@@ -1,0 +1,149 @@
+"""Training utilities for heteroscedastic (mu, log-variance) NLL models.
+
+Kept separate from ``scripts/trainer.py`` by design: the existing
+deterministic architectures (``unet``, ``resunet``, ``attention_unet``,
+``efficientnet_unet``) and their checkpoints/behaviour are left untouched.
+This module wires up the NLL-variant builders instead, reusing
+``scripts.trainer.get_callbacks`` (generic checkpoint/early-stopping/
+TensorBoard setup, not specific to any architecture or loss).
+"""
+
+from pathlib import Path
+
+import tensorflow as tf
+
+from scripts.attention_unet_nll import build_attention_unet_nll
+from scripts.config import settings
+from scripts.losses import gaussian_nll_loss
+from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
+from scripts.trainer import get_callbacks
+
+_BUILDERS_NLL = {
+    "attention_unet_nll": build_attention_unet_nll,
+}
+
+__all__ = [
+    "get_callbacks",
+    "get_model_nll",
+    "compile_model_nll",
+    "load_model_nll",
+]
+
+
+def get_model_nll(arch_name: str, **kwargs: object) -> tf.keras.Model:
+    """Instantiate a heteroscedastic (mu, log-variance) model by name.
+
+    Parameters
+    ----------
+    arch_name : str
+        One of the registered NLL architectures (currently only
+        ``"attention_unet_nll"``).
+    **kwargs
+        Forwarded to the underlying builder function
+        (e.g. ``filters``, ``bottleneck``, ``log_var_min``, ``log_var_max``).
+
+    Returns
+    -------
+    tf.keras.Model
+        Uncompiled model with a 2-channel ``(mu, log_var)`` output.
+
+    Raises
+    ------
+    ValueError
+        If ``arch_name`` is not recognised.
+    """
+    if arch_name not in _BUILDERS_NLL:
+        raise ValueError(
+            f"Unknown NLL architecture '{arch_name}'. Available: {list(_BUILDERS_NLL)}"
+        )
+    return _BUILDERS_NLL[arch_name](**kwargs)
+
+
+def compile_model_nll(
+    model: tf.keras.Model,
+    lr: float = settings.LEARNING_RATE,
+    min_log_var: float = settings.NLL_LOG_VAR_MIN,
+    max_log_var: float = settings.NLL_LOG_VAR_MAX,
+) -> tf.keras.Model:
+    """Compile a heteroscedastic model with Adam and the Gaussian NLL loss.
+
+    Metrics (:class:`~scripts.metrics.MuMAEMetric`,
+    :class:`~scripts.metrics.MuSSIMMetric`,
+    :class:`~scripts.metrics.MuPSNRMetric`) read only the ``mu`` channel,
+    so they stay directly comparable to the deterministic architectures'
+    ``mae``/``ssim``/``psnr`` in ``030_evaluation.ipynb``.
+
+    Parameters
+    ----------
+    model : tf.keras.Model
+        Uncompiled (or previously compiled) model with a 2-channel
+        ``(mu, log_var)`` output.
+    lr : float
+        Initial Adam learning rate.
+    min_log_var : float
+        Lower clip bound for ``log_var`` inside the loss.
+    max_log_var : float
+        Upper clip bound for ``log_var`` inside the loss.
+
+    Returns
+    -------
+    tf.keras.Model
+        Compiled model (modified in-place and returned).
+    """
+    loss_fn = gaussian_nll_loss(min_log_var=min_log_var, max_log_var=max_log_var)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        loss=loss_fn,
+        metrics=[MuMAEMetric(), MuSSIMMetric(), MuPSNRMetric()],
+    )
+    return model
+
+
+def load_model_nll(
+    arch_name: str,
+    model_dir: Path = settings.MODELS_DIR,
+    lr: float = settings.LEARNING_RATE,
+    min_log_var: float = settings.NLL_LOG_VAR_MIN,
+    max_log_var: float = settings.NLL_LOG_VAR_MAX,
+) -> tf.keras.Model:
+    """Load the best checkpoint for an NLL architecture and recompile it.
+
+    Loading with ``compile=False`` avoids custom-object registration
+    issues; the model is recompiled with :func:`compile_model_nll`.
+
+    Parameters
+    ----------
+    arch_name : str
+        NLL architecture identifier.
+    model_dir : Path
+        Root directory where checkpoints are stored (same tree as
+        ``scripts.trainer.load_model`` — the arch name keeps NLL
+        checkpoints in their own subdirectory, e.g.
+        ``models/attention_unet_nll/``, so they never collide with the
+        deterministic checkpoints).
+    lr : float
+        Learning rate for recompilation.
+    min_log_var : float
+        Lower clip bound for ``log_var`` inside the loss.
+    max_log_var : float
+        Upper clip bound for ``log_var`` inside the loss.
+
+    Returns
+    -------
+    tf.keras.Model
+        Compiled model ready for ``evaluate()`` or ``predict()``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no checkpoint exists for ``arch_name``.
+    """
+    model_path = model_dir / arch_name / "best_model.keras"
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"No checkpoint found at {model_path}. Run training first."
+        )
+    model = tf.keras.models.load_model(str(model_path), compile=False)
+    return compile_model_nll(
+        model, lr=lr, min_log_var=min_log_var, max_log_var=max_log_var
+    )

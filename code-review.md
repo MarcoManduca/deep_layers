@@ -200,7 +200,35 @@ Spectral Recovery Challenge.
   Efficient Spectral Reconstruction,"* CVPRW, 2022.
   https://doi.org/10.48550/arXiv.2204.07908
 
-### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence)
+### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence) — PILOT IMPLEMENTED
+
+Implemented as a pilot on `feature/heteroscedastic-nll`, kept entirely
+separate from the four existing architectures (no existing file's
+training behaviour changes): `scripts/attention_unet_nll.py`
+(`build_attention_unet_nll`), `scripts/losses.py`
+(`gaussian_nll_loss`, additive), `scripts/metrics.py` (`MuMAEMetric`,
+`MuSSIMMetric`, `MuPSNRMetric`, additive), `scripts/trainer_nll.py`,
+`scripts/inference_utils_nll.py`, `scripts/visualization_nll.py`
+(`plot_predictions_nll`, `plot_zscore`), and three notebooks mirroring
+the existing pipeline — `021_training_nll.ipynb`,
+`031_evaluation_nll.ipynb`, `051_delta_analysis_nll.ipynb`. Checkpoints
+land in `models/attention_unet_nll/`, never colliding with the
+deterministic architectures.
+
+One real bug surfaced and was fixed during the pilot: the `log_var`
+clip was originally a `Lambda` layer, which Keras refuses to
+deserialize by default (`Lambda` wrapping a Python function is treated
+as an arbitrary-code-execution risk) — this silently broke
+`tf.keras.models.load_model` on any saved checkpoint, only surfacing
+when `031_evaluation_nll.ipynb` tried to reload the trained model.
+Fixed by replacing it with `ClipLogVar`, a small named/serializable
+`keras.layers.Layer` subclass; a save/load round-trip regression test
+was added (`tests/unit/test_nll.py`) to catch this class of bug in the
+future.
+
+Not yet trained end-to-end (only a 1-epoch smoke run to validate the
+pipeline) — the full training/evaluation decision and result comparison
+against the four deterministic architectures is still open.
 
 Motivation: the RGB→IR mapping is inherently one-to-many — pigments that
 look alike in visible light can have markedly different IR reflectance, so

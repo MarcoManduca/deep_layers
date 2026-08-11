@@ -55,6 +55,11 @@ class Settings(BaseSettings):
         of this side length (must be a multiple of ``PATCH_MULTIPLE``).
         ``None`` disables cropping. Applied only to the augmented (training)
         split — never at evaluation or inference.
+    NLL_LOG_VAR_MIN : float
+        Lower clip bound for the predicted ``log_var`` channel in
+        heteroscedastic (mu, log-variance) models, for numerical stability.
+    NLL_LOG_VAR_MAX : float
+        Upper clip bound for the predicted ``log_var`` channel.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -90,6 +95,9 @@ class Settings(BaseSettings):
     LAPLACIAN_LEVELS: int = 4
 
     CROP_SIZE: int | None = None
+
+    NLL_LOG_VAR_MIN: float = -6.0
+    NLL_LOG_VAR_MAX: float = 6.0
 
 
 settings = Settings()

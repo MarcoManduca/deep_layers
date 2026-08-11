@@ -54,3 +54,18 @@ def dummy_model() -> tf.keras.Model:
     inputs = tf.keras.Input(shape=(None, None, 3))
     outputs = tf.keras.layers.Conv2D(1, 1, activation="sigmoid")(inputs)
     return tf.keras.Model(inputs, outputs, name="dummy")
+
+
+@pytest.fixture
+def dummy_model_nll() -> tf.keras.Model:
+    """A minimal fully-convolutional RGB -> (mu, log_var) model for fast tests.
+
+    Maps ``(B, H, W, 3)`` to ``(B, H, W, 2)`` with a single 1x1 conv per
+    branch, so it compiles and runs in milliseconds without downloading
+    any weights.
+    """
+    inputs = tf.keras.Input(shape=(None, None, 3))
+    mu = tf.keras.layers.Conv2D(1, 1, activation="sigmoid")(inputs)
+    log_var = tf.keras.layers.Conv2D(1, 1, activation="linear")(inputs)
+    outputs = tf.keras.layers.Concatenate()([mu, log_var])
+    return tf.keras.Model(inputs, outputs, name="dummy_nll")

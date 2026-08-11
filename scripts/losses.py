@@ -189,3 +189,50 @@ def combined_loss_advanced(
 
     loss.__name__ = "combined_loss_advanced"
     return loss
+
+
+def gaussian_nll_loss(min_log_var: float = -6.0, max_log_var: float = 6.0) -> Callable:
+    """Return a Gaussian negative-log-likelihood loss for heteroscedastic regression.
+
+    For models that predict a per-pixel mean and log-variance instead of a
+    single deterministic value (e.g.
+    :func:`scripts.attention_unet_nll.build_attention_unet_nll`).
+    ``y_pred`` is expected to carry two channels — ``mu`` in channel 0 and
+    ``log_var`` in channel 1 — while ``y_true`` remains the single-channel
+    ground-truth IR image.
+
+    The loss is::
+
+        loss = 0.5 * exp(-log_var) * (y_true - mu)^2 + 0.5 * log_var
+
+    which is, up to an additive constant, the negative log-likelihood of
+    ``y_true`` under a per-pixel Gaussian ``N(mu, exp(log_var))``. The
+    first term is an uncertainty-weighted squared error (low ``log_var``
+    sharpens the penalty, high ``log_var`` softens it); the second term
+    penalises inflating ``log_var`` to trivially shrink the first —
+    without it the model could minimise the loss by predicting infinite
+    uncertainty everywhere instead of an accurate ``mu``.
+
+    Parameters
+    ----------
+    min_log_var : float
+        Lower clip bound applied to ``log_var`` before computing the loss,
+        for numerical stability.
+    max_log_var : float
+        Upper clip bound applied to ``log_var``.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor`` compatible with
+        ``model.compile(loss=...)``, where ``y_pred`` has 2 channels.
+    """
+
+    def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        mu = y_pred[..., 0:1]
+        log_var = tf.clip_by_value(y_pred[..., 1:2], min_log_var, max_log_var)
+        precision = tf.exp(-log_var)
+        return tf.reduce_mean(0.5 * precision * tf.square(y_true - mu) + 0.5 * log_var)
+
+    loss.__name__ = "gaussian_nll_loss"
+    return loss
