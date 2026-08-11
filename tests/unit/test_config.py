@@ -1,6 +1,6 @@
 """Unit tests for scripts.config."""
 
-from scripts.config import settings
+from scripts.config import Settings, settings
 
 
 def test_split_ratios_leave_room_for_test_fold() -> None:
@@ -19,4 +19,4 @@ def test_patch_multiple_is_power_of_two_divisible_by_pooling() -> None:
 def test_crop_size_field_default_is_disabled() -> None:
     # The declared default must keep cropping off; the live ``settings`` value
     # may be overridden via ``.env``, so assert the field default directly.
-    assert settings.model_fields["CROP_SIZE"].default is None
+    assert Settings.model_fields["CROP_SIZE"].default is None
