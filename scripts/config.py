@@ -25,11 +25,18 @@ class LossName(str, Enum):
 # ``trainer.get_loss_name``), so the two paths can never silently disagree.
 # Changing an architecture's loss means editing this table — the loss is never
 # passed as a manual flag.
+#ARCH_LOSSES: dict[str, LossName] = {
+#    "unet": LossName.COMBINED,
+#    "resunet": LossName.COMBINED,
+#    "attention_unet": LossName.COMBINED,
+#    "efficientnet_unet": LossName.ADVANCED,
+#}
+
 ARCH_LOSSES: dict[str, LossName] = {
-    "unet": LossName.COMBINED,
-    "resunet": LossName.COMBINED,
-    "attention_unet": LossName.COMBINED,
-    "efficientnet_unet": LossName.ADVANCED,
+    "unet": LossName.NORMALIZED,
+    "resunet": LossName.NORMALIZED,
+    "attention_unet": LossName.NORMALIZED,
+    "efficientnet_unet": LossName.NORMALIZED,
 }
 
 
