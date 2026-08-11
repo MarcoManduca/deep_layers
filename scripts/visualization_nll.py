@@ -108,3 +108,79 @@ def plot_zscore(
 
     plt.tight_layout()
     return fig
+
+
+def plot_delta_comparison(
+    result: object,
+    ir_real: np.ndarray,
+    mu: np.ndarray,
+    sigma: np.ndarray,
+    title: str = "Delta comparison",
+    z_vmax: float = 4.0,
+) -> plt.Figure:
+    """Compare, side by side, every way this pipeline highlights hidden detail.
+
+    A single figure with every "is this pixel a genuine hidden mark?"
+    signal produced across the pipeline, so they can be read at a glance
+    instead of scattered across notebook sections:
+
+    - **raw delta** ``|real - mu|`` — the original baseline; conflates
+      genuine hidden detail with substrate/acquisition gray-level shifts;
+    - **structural delta** (``1 - local SSIM structure``) — insensitive to
+      gray-level shifts, sensitive to genuine structural change
+      (``scripts.delta_analysis``, ``note.md`` §1);
+    - **fixed-window normalized delta** — per-window z-score delta,
+      spatial-only normalization (``scripts.delta_analysis``,
+      ``note.md`` §2);
+    - **learned z-score** ``(real - mu) / sigma`` — color/context-
+      conditioned normalization learned by the heteroscedastic model
+      (``code-review.md`` §7.6, ``note.md`` "Update" section);
+    - **confidence map** — agreement between the raw and structural delta.
+
+    See ``note.md``'s "fixed-window vs. learned normalization" section for
+    what each of these actually normalizes against and where each has a
+    blind spot the others cover.
+
+    Parameters
+    ----------
+    result : scripts.delta_analysis.DeltaAnalysisResult
+        Output of ``scripts.delta_analysis.analyze_delta(ir_real, mu, ...)``.
+    ir_real : np.ndarray
+        Ground-truth IR of shape ``(H, W)`` or ``(H, W, 1)``.
+    mu : np.ndarray
+        Predicted mean IR of shape ``(H, W)`` or ``(H, W, 1)``.
+    sigma : np.ndarray
+        Predicted standard deviation of shape ``(H, W)`` or ``(H, W, 1)``.
+    title : str
+        Figure title.
+    z_vmax : float
+        Symmetric color-scale bound for the learned z-score panel.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    real = ir_real.squeeze()
+    mu_sq = mu.squeeze()
+    sigma_sq = sigma.squeeze()
+    raw_delta = np.abs(real - mu_sq)
+    z = (real - mu_sq) / (sigma_sq + 1e-8)
+
+    panels = (
+        ("Raw delta\n|real - mu|", raw_delta, None),
+        ("Structural delta\n(1 - structure)", result.structural_delta, (0, 1)),
+        ("Fixed-window\nnormalized delta", result.normalized_delta, None),
+        ("Learned z-score\n(real - mu) / sigma", z, (-z_vmax, z_vmax)),
+        ("Confidence\n(raw vs structural agreement)", result.confidence_map, (0, 1)),
+    )
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(4 * len(panels), 4.5))
+    fig.suptitle(title)
+    for ax, (panel_title, data, vrange) in zip(axes, panels):
+        vmin, vmax = vrange if vrange is not None else (None, None)
+        im = ax.imshow(data, cmap="gray", vmin=vmin, vmax=vmax)
+        ax.set_title(panel_title, fontsize=10)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    return fig
