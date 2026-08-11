@@ -12,6 +12,7 @@ from scripts.dataset import (
     extract_artwork_id,
     grouped_train_val_test_split,
     load_image_pairs,
+    mockup_aware_train_val_test_split,
     pad_to_multiple,
 )
 
@@ -117,6 +118,84 @@ def test_grouped_split_is_deterministic_for_same_seed(
 
     # Assert
     assert first == second
+
+
+def _fake_pairs(sections_per_group: dict[str, int]) -> list[tuple[Path, Path]]:
+    """Build fake ``(rgb_path, ir_path)`` tuples without touching disk.
+
+    ``mockup_aware_train_val_test_split`` only reads ``.stem``, so no real
+    files are needed.
+    """
+    pairs = []
+    for group, n_sections in sections_per_group.items():
+        for i in range(n_sections):
+            stem = f"{group}_sezione_{i}"
+            pairs.append((Path(f"{stem}.jpg"), Path(f"{stem}.jpg")))
+    return pairs
+
+
+def test_mockup_aware_split_keeps_mockup_groups_mostly_in_trainval() -> None:
+    # Arrange: 3 real artworks (leakage-sensitive) + 1 mockup group (20 sections)
+    pairs = _fake_pairs({"a1": 3, "b2": 3, "c3": 2, "tblu": 20})
+
+    # Act
+    train, val, test = mockup_aware_train_val_test_split(
+        pairs, mockup_ids=["tblu"], mockup_test_ratio=0.05, seed=42
+    )
+    mockup_test = [p for p in test if extract_artwork_id(p[0].stem) == "tblu"]
+    mockup_trainval = [
+        p for p in train + val if extract_artwork_id(p[0].stem) == "tblu"
+    ]
+
+    # Assert: only a small slice of the mockup group ends up in test, the
+    # rest is spread across train/val (not held out entirely, unlike a
+    # real-artwork group would be).
+    assert len(mockup_test) == 1  # round(20 * 0.05)
+    assert len(mockup_trainval) == 19
+
+
+def test_mockup_aware_split_still_prevents_leakage_for_real_artworks() -> None:
+    # Arrange
+    pairs = _fake_pairs({"a1": 3, "b2": 2, "c3": 2, "tverde": 20})
+
+    # Act
+    train, val, test = mockup_aware_train_val_test_split(
+        pairs, mockup_ids=["tverde"], seed=42
+    )
+    real_train_ids = {
+        extract_artwork_id(p[0].stem)
+        for p in train
+        if extract_artwork_id(p[0].stem) != "tverde"
+    }
+    real_val_ids = {
+        extract_artwork_id(p[0].stem)
+        for p in val
+        if extract_artwork_id(p[0].stem) != "tverde"
+    }
+    real_test_ids = {
+        extract_artwork_id(p[0].stem)
+        for p in test
+        if extract_artwork_id(p[0].stem) != "tverde"
+    }
+
+    # Assert: real artwork IDs never span more than one fold.
+    assert real_train_ids.isdisjoint(real_val_ids)
+    assert real_train_ids.isdisjoint(real_test_ids)
+    assert real_val_ids.isdisjoint(real_test_ids)
+
+
+def test_mockup_aware_split_covers_every_pair_exactly_once() -> None:
+    # Arrange
+    pairs = _fake_pairs({"a1": 3, "b2": 2, "c3": 2, "tblu": 20, "tverde": 15})
+
+    # Act
+    train, val, test = mockup_aware_train_val_test_split(
+        pairs, mockup_ids=["tblu", "tverde"], seed=42
+    )
+
+    # Assert
+    assert len(train) + len(val) + len(test) == len(pairs)
+    assert set(train + val + test) == set(pairs)
 
 
 @pytest.mark.parametrize(

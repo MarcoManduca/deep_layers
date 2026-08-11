@@ -93,6 +93,7 @@ A real `pytest` suite and `ruff` configuration exist, but nothing runs them auto
 - **Two-phase fine-tuning for `efficientnet_unet`**: `build_efficientnet_unet` already exposes `freeze_encoder=False` (`efficientnet_unet.py:85-88`), but nothing in `trainer.py`/the training notebook actually uses it — the encoder trains fully frozen for all 100 epochs. The standard transfer-learning recipe (train the decoder to convergence with the encoder frozen, then unfreeze and fine-tune end-to-end at a lower learning rate, e.g. `LEARNING_RATE / 10`) is currently unimplemented and could improve accuracy without any architectural change.
 - **No explicit regularization in the three from-scratch architectures**: `unet.py`, `resunet.py`, `attention_unet.py` rely on BatchNorm alone; the 1024-channel bottleneck (`unet.py:68`, `resunet.py:73`, `attention_unet.py:104`) is large relative to a painting-scale dataset split by artwork (likely tens, not thousands, of distinct works). Adding spatial dropout at the bottleneck/deeper decoder stages would be a low-risk way to reduce overfitting risk on a small dataset.
 - **EfficientNetB0 backbone is dated (2019)**: `tf.keras.applications` also ships more recent ImageNet-pretrained backbones (e.g. `EfficientNetV2B0`, `ConvNeXtTiny`) as drop-in replacements for the `EfficientNetB0(...)` call in `efficientnet_unet.py:99-104` — same `include_top=False`/frozen-encoder pattern would apply, only the `_SKIP_LAYER_NAMES` (`efficientnet_unet.py:8-14`) would need to be re-mapped to the new backbone's layer names. See §7 "Alternative architectures" for literature justifying this and other backbone/architecture changes.
+- **Mockup-aware train/val/test split** — IMPLEMENTED (`scripts/dataset.py:135-215`, `mockup_aware_train_val_test_split`): 6 of the 30 artwork groups (`tblu`, `tbianco`, `tbruno`, `tgiallo`, `trosso`, `tverde` — configurable via `config.settings.MOCKUP_ARTWORK_IDS`) are not real paintings but synthetic paint-on-support mockups created specifically to aid training, and together account for ~34% of all pairs (400/1164). The original `grouped_train_val_test_split` treats every artwork ID as an indivisible group to prevent leakage between sections of the same painting — correct for real artworks, but wasteful for mockup groups, which risked being held out of training entirely by an unlucky group-level split despite existing purely to be learned from. The new function keeps the group-level, leakage-free split for real artworks unchanged, but splits mockup groups at the individual pair level instead, sending only a small fraction (`mockup_test_ratio`, default 5%) to test and the rest to train/val. Added as a new function rather than a change to the existing one (both are wired as commented, side-by-side alternative blocks — "artworks split" vs "artwork and mockups split" — in `010_eda.ipynb`, `020_training.ipynb`, `030_evaluation.ipynb`) so existing checkpoints/results trained on the artworks split remain reproducible. Covered by `tests/unit/test_dataset.py::test_mockup_aware_split_*` (mockup groups end up mostly in train/val, real artworks still leakage-free, every pair covered exactly once).
 
 ---
 
@@ -198,3 +199,66 @@ Spectral Recovery Challenge.
 - Y. Cai et al., *"MST++: Multi-stage Spectral-wise Transformer for
   Efficient Spectral Reconstruction,"* CVPRW, 2022.
   https://doi.org/10.48550/arXiv.2204.07908
+
+### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence)
+
+Motivation: the RGB→IR mapping is inherently one-to-many — pigments that
+look alike in visible light can have markedly different IR reflectance, so
+a single deterministic prediction per pixel forces the network to average
+over genuinely ambiguous cases. This direction replaces the current
+single-channel, deterministic output (`Conv2D(1, 1, activation="sigmoid")`,
+identical across all four architectures) with a two-channel head predicting
+both a mean `μ` (the expected IR value, same role as today's output) and a
+log-variance `log σ²` (the network's own learned estimate of how ambiguous
+that RGB context has historically been). Trained with a Gaussian
+negative-log-likelihood loss instead of `combined_loss`/
+`combined_loss_advanced`:
+
+```
+L = 0.5 * exp(-log_var) * (y_true - mu) ** 2 + 0.5 * log_var
+```
+
+Architecturally this is minimally invasive — only the final `1×1` conv of
+each of the four encoder–decoders changes (an extra parallel `Conv2D(1, 1)`
+branch for `log_var`, concatenated with the existing `mu` branch); no
+change to the shared encoder/decoder trunks. `SSIMMetric`/`PSNRMetric`
+(`scripts/metrics.py`) would need to slice out the `mu` channel before
+comparing against `y_true`, since only `mu` is an image-shaped prediction.
+
+Payoff for this project specifically: at inference the learned `σ` gives a
+principled, color/context-conditioned normalization for the delta signal —
+`z = (real_IR - mu) / sigma` — as an alternative or complement to the fixed
+Gaussian-window normalization currently used in `delta_analysis.py`. A real
+IR pixel within a small `z` is unremarkable for that pigment even if the
+raw delta is large (that color is known to be variable); a pixel at large
+`z` is a genuine anomaly candidate (underdrawing/pentimento) even where the
+raw delta is modest. Crucially, `σ` is learned from RGB context alone and
+never conditioned on the real IR value at inference time, so it cannot
+"explain away" real anomalies the way a ground-truth-conditioned
+hypothesis-selection scheme would.
+
+Known training pitfall: naively minimizing the Gaussian NLL from scratch is
+prone to instability — the network can trivially lower the loss early on by
+inflating `σ` everywhere instead of learning an accurate `μ` (a form of
+gradient starvation on the mean branch). The standard mitigations are a
+warm-start (train `mu` alone with the current deterministic loss for the
+first epochs, before enabling the variance branch/NLL) and/or a modified
+loss that down-weights the variance term early in training.
+
+- D.A. Nix, A.S. Weigend, *"Estimating the mean and variance of the target
+  probability distribution,"* IEEE ICNN, 1994.
+  https://doi.org/10.1109/ICNN.1994.374138 — original formulation of a
+  neural network predicting both mean and variance of its target, trained
+  with Gaussian NLL.
+- A. Kendall, Y. Gal, *"What Uncertainties Do We Need in Bayesian Deep
+  Learning for Computer Vision?,"* NeurIPS, 2017.
+  https://doi.org/10.48550/arXiv.1703.04977 — the modern formulation used
+  here (log-variance parameterization for numerical stability, aleatoric
+  vs. epistemic uncertainty), standard reference for heteroscedastic heads
+  in vision regression tasks.
+- M. Seitzer, A. Tavakoli, D. Antic, G. Martius, *"On the Pitfalls of
+  Heteroscedastic Uncertainty Estimation with Probabilistic Neural
+  Networks,"* ICLR, 2022. https://doi.org/10.48550/arXiv.2203.09168 —
+  documents the variance-inflation/gradient-starvation training instability
+  described above and proposes a corrective (β-NLL) loss weighting;
+  directly relevant if the plain NLL proves hard to train on this dataset.
