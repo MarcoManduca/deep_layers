@@ -1,13 +1,12 @@
 """Training utilities: model factory, compilation, callbacks, and checkpoint loading."""
 
 from collections.abc import Callable
-from enum import Enum
 from pathlib import Path
 
 import tensorflow as tf
 
 from scripts.attention_unet import build_attention_unet
-from scripts.config import settings
+from scripts.config import ARCH_LOSSES, LossName, settings
 from scripts.efficientnet_unet import build_efficientnet_unet
 from scripts.losses import (
     combined_loss,
@@ -26,28 +25,12 @@ _BUILDERS = {
 }
 
 
-class LossName(str, Enum):
-    """Identifier of a loss available to the training pipeline."""
-
-    COMBINED = "combined_loss"
-    ADVANCED = "combined_loss_advanced"
-    NORMALIZED = "combined_loss_normalized"
-
-
-# Single source of truth mapping each architecture to the loss it trains with.
-# Both training and checkpoint loading derive the loss from here, so the two
-# paths can never silently disagree. Changing an architecture's loss means
-# editing this table — the loss is never passed as a manual flag.
-_ARCH_LOSSES: dict[str, LossName] = {
-    "unet": LossName.COMBINED,
-    "resunet": LossName.COMBINED,
-    "attention_unet": LossName.COMBINED,
-    "efficientnet_unet": LossName.ADVANCED,
-}
-
-
 def get_loss_name(arch_name: str) -> LossName:
     """Return the loss an architecture is trained with.
+
+    Reads the :data:`scripts.config.ARCH_LOSSES` registry — the single source
+    of truth. Both training and checkpoint loading resolve their loss through
+    here, so the two paths can never silently disagree.
 
     Parameters
     ----------
@@ -64,12 +47,12 @@ def get_loss_name(arch_name: str) -> LossName:
     ValueError
         If ``arch_name`` has no registry entry.
     """
-    if arch_name not in _ARCH_LOSSES:
+    if arch_name not in ARCH_LOSSES:
         raise ValueError(
             f"No loss registered for architecture '{arch_name}'. "
-            f"Available: {list(_ARCH_LOSSES)}"
+            f"Available: {list(ARCH_LOSSES)}"
         )
-    return _ARCH_LOSSES[arch_name]
+    return ARCH_LOSSES[arch_name]
 
 
 def build_loss(

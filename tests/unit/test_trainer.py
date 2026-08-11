@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
+from scripts.config import ARCH_LOSSES, LossName
 from scripts.trainer import (
-    LossName,
+    _BUILDERS,
     build_loss,
     compile_model,
     get_loss_name,
@@ -34,6 +35,13 @@ def test_get_loss_name_returns_registered_loss(
 def test_get_loss_name_raises_on_unregistered_architecture() -> None:
     with pytest.raises(ValueError, match="No loss registered"):
         get_loss_name("does_not_exist")
+
+
+def test_every_architecture_has_a_registered_loss() -> None:
+    # The registry lives in scripts.config while the builders live here, so
+    # nothing but this test stops the two tables from drifting apart — a
+    # missing entry only surfaces at compile_model time.
+    assert set(_BUILDERS) == set(ARCH_LOSSES)
 
 
 @pytest.mark.parametrize("loss_name", list(LossName))

@@ -1,10 +1,36 @@
-"""Central configuration for the deep-layers pipeline."""
+"""Central configuration for the deep-layers pipeline.
 
+Holds the ``Settings`` hyperparameters plus the architecture-to-loss registry
+(:data:`ARCH_LOSSES`), so every training knob lives in one module.
+"""
+
+from enum import Enum
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).parent.parent
+
+
+class LossName(str, Enum):
+    """Identifier of a loss available to the training pipeline."""
+
+    COMBINED = "combined_loss"
+    ADVANCED = "combined_loss_advanced"
+    NORMALIZED = "combined_loss_normalized"
+
+
+# Single source of truth mapping each architecture to the loss it trains with.
+# Both training and checkpoint loading derive the loss from here (through
+# ``trainer.get_loss_name``), so the two paths can never silently disagree.
+# Changing an architecture's loss means editing this table — the loss is never
+# passed as a manual flag.
+ARCH_LOSSES: dict[str, LossName] = {
+    "unet": LossName.COMBINED,
+    "resunet": LossName.COMBINED,
+    "attention_unet": LossName.COMBINED,
+    "efficientnet_unet": LossName.ADVANCED,
+}
 
 
 class Settings(BaseSettings):
