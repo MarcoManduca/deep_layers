@@ -5,7 +5,11 @@ deterministic architectures (``unet``, ``resunet``, ``attention_unet``,
 ``efficientnet_unet``) and their checkpoints/behaviour are left untouched.
 This module wires up the NLL-variant builders instead, reusing
 ``scripts.trainer.get_callbacks`` (generic checkpoint/early-stopping/
-TensorBoard setup, not specific to any architecture or loss).
+TensorBoard setup, not specific to any architecture or loss). All four NLL
+architectures share the same Gaussian NLL loss (unlike
+``scripts.trainer.uses_advanced_loss``, which special-cases
+``efficientnet_unet``'s deterministic loss) — there is no NLL counterpart
+of the advanced loss.
 """
 
 from pathlib import Path
@@ -14,12 +18,18 @@ import tensorflow as tf
 
 from scripts.attention_unet_nll import build_attention_unet_nll
 from scripts.config import settings
+from scripts.efficientnet_unet_nll import build_efficientnet_unet_nll
 from scripts.losses import gaussian_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
+from scripts.resunet_nll import build_resunet_nll
 from scripts.trainer import get_callbacks
+from scripts.unet_nll import build_unet_nll
 
 _BUILDERS_NLL = {
+    "unet_nll": build_unet_nll,
+    "resunet_nll": build_resunet_nll,
     "attention_unet_nll": build_attention_unet_nll,
+    "efficientnet_unet_nll": build_efficientnet_unet_nll,
 }
 
 __all__ = [
@@ -36,8 +46,9 @@ def get_model_nll(arch_name: str, **kwargs: object) -> tf.keras.Model:
     Parameters
     ----------
     arch_name : str
-        One of the registered NLL architectures (currently only
-        ``"attention_unet_nll"``).
+        One of the registered NLL architectures: ``"unet_nll"``,
+        ``"resunet_nll"``, ``"attention_unet_nll"``,
+        ``"efficientnet_unet_nll"``.
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``, ``log_var_min``, ``log_var_max``).

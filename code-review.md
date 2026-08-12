@@ -200,20 +200,31 @@ Spectral Recovery Challenge.
   Efficient Spectral Reconstruction,"* CVPRW, 2022.
   https://doi.org/10.48550/arXiv.2204.07908
 
-### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence) — PILOT IMPLEMENTED
+### 7.6. Heteroscedastic aleatoric uncertainty head (learned per-pixel confidence) — IMPLEMENTED FOR ALL FOUR ARCHITECTURES
 
-Implemented as a pilot on `feature/heteroscedastic-nll`, kept entirely
-separate from the four existing architectures (no existing file's
-training behaviour changes): `scripts/attention_unet_nll.py`
-(`build_attention_unet_nll`), `scripts/losses.py`
-(`gaussian_nll_loss`, additive), `scripts/metrics.py` (`MuMAEMetric`,
-`MuSSIMMetric`, `MuPSNRMetric`, additive), `scripts/trainer_nll.py`,
-`scripts/inference_utils_nll.py`, `scripts/visualization_nll.py`
-(`plot_predictions_nll`, `plot_zscore`), and three notebooks mirroring
-the existing pipeline — `021_training_nll.ipynb`,
-`031_evaluation_nll.ipynb`, `051_delta_analysis_nll.ipynb`. Checkpoints
-land in `models/attention_unet_nll/`, never colliding with the
-deterministic architectures.
+Implemented on `feature/heteroscedastic-nll`, kept entirely separate from
+the four existing deterministic architectures (no existing file's
+training behaviour changes). Started as a pilot on `attention_unet` only
+(`scripts/attention_unet_nll.py`, `build_attention_unet_nll`), then
+extended to the other three: `scripts/unet_nll.py`
+(`build_unet_nll`), `scripts/resunet_nll.py` (`build_resunet_nll`),
+`scripts/efficientnet_unet_nll.py` (`build_efficientnet_unet_nll`; reuses
+`efficientnet_unet.py`'s pretrained encoder, skip connections, and
+`_ResizeToMatch` layer directly rather than duplicating them, to avoid
+registering a second Keras-serializable class under the same
+package/name). The `ClipLogVar` layer used by all four is factored into
+`scripts/nll_layers.py` for the same reason. Shared infrastructure:
+`scripts/losses.py` (`gaussian_nll_loss`, additive), `scripts/metrics.py`
+(`MuMAEMetric`, `MuSSIMMetric`, `MuPSNRMetric`, additive),
+`scripts/trainer_nll.py` (`_BUILDERS_NLL` registry, all four
+architectures), `scripts/inference_utils_nll.py`,
+`scripts/visualization_nll.py` (`plot_predictions_nll`, `plot_zscore`,
+`plot_delta_comparison`), and three notebooks mirroring the existing
+pipeline — `021_training_nll.ipynb`, `031_evaluation_nll.ipynb`,
+`051_delta_analysis_nll.ipynb` — all three now loop over (or, for `051`,
+are selectable across) all four `*_nll` architectures. Checkpoints land
+in `models/<arch>_nll/`, never colliding with the deterministic
+architectures.
 
 One real bug surfaced and was fixed during the pilot: the `log_var`
 clip was originally a `Lambda` layer, which Keras refuses to
@@ -226,9 +237,20 @@ Fixed by replacing it with `ClipLogVar`, a small named/serializable
 was added (`tests/unit/test_nll.py`) to catch this class of bug in the
 future.
 
-Not yet trained end-to-end (only a 1-epoch smoke run to validate the
-pipeline) — the full training/evaluation decision and result comparison
-against the four deterministic architectures is still open.
+`attention_unet_nll` has a real full training + evaluation run (22
+epochs, best val_loss -1.4852; test `mae 0.1066, psnr 19.1175, ssim
+0.5387` vs. deterministic `attention_unet`'s `mae 0.1124, ssim 0.5894,
+psnr 18.64` — mixed result, `mae`/`psnr` improve but `ssim` regresses) and
+a qualitative run of `051_delta_analysis_nll.ipynb` on a real painting
+(`green`), whose `plot_delta_comparison` panel showed the learned z-score
+tracking structural detail comparably to the structural delta, while the
+fixed-window normalized delta looked comparatively flat on that image.
+`unet_nll`, `resunet_nll`, and `efficientnet_unet_nll` are new (build,
+compile, and a real-data smoke fit/save/load round-trip all verified in
+this session) but not yet trained end-to-end — running
+`021_training_nll.ipynb` with all four in `ARCHS` and then
+`031_evaluation_nll.ipynb` is the next step. The overall keep/drop
+decision for this direction is still open.
 
 Motivation: the RGB→IR mapping is inherently one-to-many — pigments that
 look alike in visible light can have markedly different IR reflectance, so

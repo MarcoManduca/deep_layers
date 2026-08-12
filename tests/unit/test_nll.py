@@ -14,13 +14,26 @@ from scripts.attention_unet_nll import build_attention_unet_nll
 from scripts.inference_utils_nll import predict_with_overlap_nll
 from scripts.losses import gaussian_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
+from scripts.resunet_nll import build_resunet_nll
 from scripts.trainer_nll import (
     compile_model_nll,
     get_model_nll,
     load_model_nll,
 )
+from scripts.unet_nll import build_unet_nll
 
 _TINY = {"filters": [8, 16], "bottleneck": 32}
+
+# (builder, kwargs, expected model name) for the plain-conv-block NLL
+# architectures. efficientnet_unet_nll is excluded: it downloads
+# ImageNet-pretrained weights, which build_efficientnet_unet (its
+# deterministic counterpart) is likewise never unit-tested against, for
+# the same reason. attention_unet_nll keeps its own dedicated tests below
+# (attention-gate-specific coverage predates this list).
+_OTHER_BUILDERS = [
+    (build_unet_nll, _TINY, "unet_nll"),
+    (build_resunet_nll, _TINY, "resunet_nll"),
+]
 
 
 def _batch(seed: int, channels: int = 1) -> tf.Tensor:
@@ -93,6 +106,63 @@ def test_builder_survives_a_save_load_round_trip(tmp_path: Path) -> None:
     # named, serializable layer) fixes this — this test would fail on the
     # old Lambda-based implementation.
     model = build_attention_unet_nll(**_TINY)
+    ckpt = tmp_path / "model.keras"
+    model.save(str(ckpt))
+
+    reloaded = tf.keras.models.load_model(str(ckpt), compile=False)
+
+    x = np.random.rand(1, 16, 16, 3).astype("float32")
+    y = reloaded(x, training=False).numpy()
+    assert y.shape == (1, 16, 16, 2)
+
+
+# ---------------------------------------------------------------------------
+# scripts.unet_nll / scripts.resunet_nll (shared coverage)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("builder,kwargs,expected_name", _OTHER_BUILDERS)
+def test_other_builder_outputs_two_channels(builder, kwargs, expected_name) -> None:
+    model = builder(**kwargs)
+    x = np.random.rand(1, 16, 16, 3).astype("float32")
+
+    y = model(x, training=False).numpy()
+
+    assert y.shape == (1, 16, 16, 2)
+    assert model.name == expected_name
+
+
+@pytest.mark.parametrize("builder,kwargs,expected_name", _OTHER_BUILDERS)
+def test_other_builder_mu_channel_is_in_unit_range(
+    builder, kwargs, expected_name
+) -> None:
+    model = builder(**kwargs)
+    x = np.random.rand(1, 16, 16, 3).astype("float32")
+
+    mu = model(x, training=False).numpy()[..., 0]
+
+    assert mu.min() >= 0.0
+    assert mu.max() <= 1.0
+
+
+@pytest.mark.parametrize("builder,kwargs,expected_name", _OTHER_BUILDERS)
+def test_other_builder_log_var_channel_is_clipped(
+    builder, kwargs, expected_name
+) -> None:
+    model = builder(log_var_min=-2.0, log_var_max=2.0, **kwargs)
+    x = np.random.rand(1, 16, 16, 3).astype("float32")
+
+    log_var = model(x, training=False).numpy()[..., 1]
+
+    assert log_var.min() >= -2.0
+    assert log_var.max() <= 2.0
+
+
+@pytest.mark.parametrize("builder,kwargs,expected_name", _OTHER_BUILDERS)
+def test_other_builder_survives_a_save_load_round_trip(
+    builder, kwargs, expected_name, tmp_path: Path
+) -> None:
+    model = builder(**kwargs)
     ckpt = tmp_path / "model.keras"
     model.save(str(ckpt))
 
@@ -215,6 +285,23 @@ def test_get_model_nll_raises_on_unknown_architecture() -> None:
 def test_get_model_nll_builds_registered_architecture() -> None:
     model = get_model_nll("attention_unet_nll", **_TINY)
     assert model.name == "attention_unet_nll"
+
+
+@pytest.mark.parametrize("arch_name", ["unet_nll", "resunet_nll", "attention_unet_nll"])
+def test_get_model_nll_builds_each_plain_registered_architecture(
+    arch_name: str,
+) -> None:
+    model = get_model_nll(arch_name, **_TINY)
+    assert model.name == arch_name
+
+
+def test_efficientnet_unet_nll_is_registered_without_building_it() -> None:
+    # build_efficientnet_unet_nll downloads ImageNet weights; only check
+    # registration here, mirroring efficientnet_unet's lack of a
+    # dedicated builder test (see _OTHER_BUILDERS above).
+    from scripts.trainer_nll import _BUILDERS_NLL
+
+    assert "efficientnet_unet_nll" in _BUILDERS_NLL
 
 
 def test_load_model_nll_raises_when_checkpoint_missing(tmp_path: Path) -> None:
