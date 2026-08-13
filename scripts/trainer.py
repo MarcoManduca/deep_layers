@@ -11,9 +11,11 @@ from scripts.losses import combined_loss, combined_loss_advanced
 from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
+from scripts.unet_v2 import build_unet_v2
 
 _BUILDERS = {
     "unet": build_unet,
+    "unet_v2": build_unet_v2,
     "resunet": build_resunet,
     "attention_unet": build_attention_unet,
     "efficientnet_unet": build_efficientnet_unet,
@@ -48,7 +50,7 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
     Parameters
     ----------
     arch_name : str
-        One of ``"unet"``, ``"resunet"``, ``"attention_unet"``,
+        One of ``"unet"``, ``"unet_v2"``, ``"resunet"``, ``"attention_unet"``,
         ``"efficientnet_unet"``.
     **kwargs
         Forwarded to the underlying builder function

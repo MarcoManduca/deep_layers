@@ -11,7 +11,7 @@ from scripts.trainer import get_model
 
 # Tiny configs keep model construction and a forward pass in milliseconds.
 _TINY = {"filters": [8, 16], "bottleneck": 32}
-_CONV_ARCHS = ["unet", "resunet", "attention_unet"]
+_CONV_ARCHS = ["unet", "unet_v2", "resunet", "attention_unet"]
 
 
 @pytest.mark.parametrize("arch", _CONV_ARCHS)

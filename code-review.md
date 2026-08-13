@@ -312,3 +312,68 @@ loss that down-weights the variance term early in training.
   documents the variance-inflation/gradient-starvation training instability
   described above and proposes a corrective (β-NLL) loss weighting;
   directly relevant if the plain NLL proves hard to train on this dataset.
+
+**Update**: `scripts.losses.beta_gaussian_nll_loss` (the β-NLL correction
+above) is implemented and selectable via `scripts.trainer_nll.NLL_LOSSES`
+(`compile_model_nll`/`load_model_nll`'s `loss_name`/`beta` parameters).
+`022_training_v2.ipynb` trains all four `*_nll` architectures with
+`beta_nll`, saved to a separate checkpoint tree (`models/nll_beta/<arch>/`)
+so the existing `gaussian_nll` checkpoints from `021_training_nll.ipynb`
+are preserved for comparison; `032_evaluation_v2.ipynb` and
+`062_model_comparison_v2.ipynb` compare the two loss variants
+quantitatively and qualitatively. This session's cross-architecture
+finding that plain `gaussian_nll` regresses `mae`/`psnr`/`ssim` on every
+architecture (see handoff/`031_evaluation_nll.ipynb`'s committed run) is
+the open question `beta_nll` is meant to address — not yet run.
+
+### 7.7. `unet_v2`: encoder/decoder downsampling/upsampling and regularization variants — IMPLEMENTED
+
+`scripts/unet_v2.py` (`build_unet_v2`) mirrors `unet.py` exactly with all
+flags at their default (off), and exposes three modifications discussed
+for this architecture as independent, ablatable parameters rather than a
+single fused variant — so each can be attributed separately once trained:
+
+- `use_strided_conv`: replaces `MaxPool2D` with a learned stride-2
+  `Conv2D` for encoder downsampling. Motivation: `MaxPool2D` is a fixed,
+  non-learned operator; letting the network learn what to keep when
+  compressing may suit a domain-specific, subtle signal (underdrawing
+  strokes) better than a generic max response.
+- `use_upsample_conv`: replaces `Conv2DTranspose` with bilinear
+  `UpSampling2D` + `Conv2D` for decoder upsampling, to avoid the
+  checkerboard artifacts transposed convolution is prone to (Odena et al.,
+  *"Deconvolution and Checkerboard Artifacts,"* Distill, 2016). Implemented
+  as a custom `_Upsample2x` layer rather than `layers.UpSampling2D`
+  directly — `UpSampling2D` inspects the *static* input shape and raises
+  on this model's fully dynamic `(None, None, 3)` input; `_Upsample2x`
+  resizes from the *runtime* shape via `tf.image.resize`, the same fix
+  already used by `_ResizeToMatch` in `efficientnet_unet.py` for the same
+  underlying reason. `register_keras_serializable`-decorated, so
+  `tf.keras.models.load_model` can reconstruct it without
+  `custom_objects` (`ClipLogVar`/`_ResizeToMatch` are the two prior
+  instances of this bug class — see §7.6's "Known training pitfall" note
+  and `nll_layers.py`); a save/load round-trip regression test
+  (`tests/unit/test_unet_v2.py`) guards it going forward.
+- `dropout_rate`: `SpatialDropout2D` applied at the bottleneck and the
+  first (deepest) decoder block only, not every block. Applying it
+  throughout would compound with the `BatchNormalization` already present
+  in every conv block — dropout noise present in training but absent at
+  inference shifts the statistics BN relies on (Li et al., *"Understanding
+  the Disharmony between Dropout and Batch Normalization,"* 2019).
+  Restricting it to the two deepest blocks concentrates regularization
+  where overfitting risk is highest (large bottleneck relative to a
+  painting-scale dataset — §4) while leaving the shallow encoder levels,
+  where fine underdrawing-relevant detail lives, untouched.
+
+Registered in `scripts/trainer.py`'s `_BUILDERS`/`compile_model` as a new,
+independent architecture name (`"unet_v2"`) — checkpoints save to
+`models/unet_v2/`, never colliding with `unet`. Covered by
+`tests/unit/test_unet_v2.py` (each flag's effect on layer composition in
+isolation, combined-flags output shape/range, save/load round trip) and
+included in the generic architecture builder tests
+(`tests/unit/test_models.py`). Build, compile, and a real-data smoke
+fit/save/load round trip were verified in this session (temp
+`models`/`logs` dirs); not yet trained end-to-end —
+`022_training_v2.ipynb` trains it with all three modifications enabled
+(`use_strided_conv=True, use_upsample_conv=True, dropout_rate=0.2`),
+`032_evaluation_v2.ipynb`/`062_model_comparison_v2.ipynb` compare it
+against `unet`.
