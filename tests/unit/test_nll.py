@@ -12,7 +12,7 @@ import tensorflow as tf
 
 from scripts.attention_unet_nll import build_attention_unet_nll
 from scripts.inference_utils_nll import predict_with_overlap_nll
-from scripts.losses import gaussian_nll_loss
+from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
 from scripts.resunet_nll import build_resunet_nll
 from scripts.trainer_nll import (
@@ -220,6 +220,63 @@ def test_gaussian_nll_loss_sets_keras_friendly_name() -> None:
 
 
 # ---------------------------------------------------------------------------
+# scripts.losses.beta_gaussian_nll_loss
+# ---------------------------------------------------------------------------
+
+
+def test_beta_nll_loss_matches_plain_nll_when_beta_is_zero() -> None:
+    # weight = sigma^(2*0) = 1 everywhere -> identical to gaussian_nll_loss.
+    yt = tf.ones((2, 8, 8, 1), dtype=tf.float32) * 0.9
+    mu = tf.zeros((2, 8, 8, 1), dtype=tf.float32)
+    log_var = tf.fill(yt.shape, -1.0)
+    y_pred = tf.concat([mu, log_var], axis=-1)
+
+    plain = float(gaussian_nll_loss()(yt, y_pred))
+    beta0 = float(beta_gaussian_nll_loss(beta=0.0)(yt, y_pred))
+    assert beta0 == pytest.approx(plain, abs=1e-5)
+
+
+def test_beta_nll_loss_gives_high_variance_pixels_more_gradient_than_plain() -> None:
+    # Two pixels, same squared error, different sigma (low_var vs. high_var
+    # log_var). Plain NLL's d(loss)/d(mu) shrinks as sigma^-2; beta=0.5's
+    # shrinks only as sigma^-1 (Seitzer et al. 2022) — so the high-variance
+    # pixel's gradient share of the total should be larger under beta-NLL
+    # than under plain NLL.
+    yt = tf.constant([[[[0.9], [0.9]]]], dtype=tf.float32)  # shape (1, 1, 2, 1)
+    log_var = tf.constant([[[[-2.0], [2.0]]]], dtype=tf.float32)
+
+    def grad_ratio(loss_fn) -> float:
+        mu = tf.Variable(tf.zeros_like(yt))
+        with tf.GradientTape() as tape:
+            y_pred = tf.concat([mu, log_var], axis=-1)
+            loss = loss_fn(yt, y_pred)
+        (grad,) = tape.gradient(loss, [mu])
+        low_var_grad = abs(float(grad[0, 0, 0, 0]))
+        high_var_grad = abs(float(grad[0, 0, 1, 0]))
+        return high_var_grad / low_var_grad
+
+    plain_ratio = grad_ratio(gaussian_nll_loss())
+    beta_ratio = grad_ratio(beta_gaussian_nll_loss(beta=0.5))
+    assert beta_ratio > plain_ratio
+
+
+def test_beta_nll_loss_clips_log_var_before_use() -> None:
+    yt = _batch(0, channels=1)
+    mu = yt
+    unclipped_log_var = tf.fill(yt.shape, 1000.0)
+    y_pred = tf.concat([mu, unclipped_log_var], axis=-1)
+
+    loss_val = float(
+        beta_gaussian_nll_loss(beta=0.5, min_log_var=-6.0, max_log_var=6.0)(yt, y_pred)
+    )
+    assert np.isfinite(loss_val)
+
+
+def test_beta_nll_loss_sets_keras_friendly_name() -> None:
+    assert beta_gaussian_nll_loss().__name__ == "beta_gaussian_nll_loss"
+
+
+# ---------------------------------------------------------------------------
 # scripts.metrics.Mu*Metric
 # ---------------------------------------------------------------------------
 
@@ -324,6 +381,20 @@ def test_compile_model_nll_forward_pass_produces_finite_loss(
     yt = _batch(0, channels=1)
     metrics = dummy_model_nll.evaluate(x, yt, verbose=0, return_dict=True)
     assert np.isfinite(metrics["loss"])
+
+
+def test_compile_model_nll_uses_beta_nll_loss(
+    dummy_model_nll: tf.keras.Model,
+) -> None:
+    compile_model_nll(dummy_model_nll, loss_name="beta_nll", beta=0.5)
+    assert dummy_model_nll.loss.__name__ == "beta_gaussian_nll_loss"
+
+
+def test_compile_model_nll_raises_on_unknown_loss_name(
+    dummy_model_nll: tf.keras.Model,
+) -> None:
+    with pytest.raises(ValueError, match="Unknown NLL loss"):
+        compile_model_nll(dummy_model_nll, loss_name="does_not_exist")
 
 
 # ---------------------------------------------------------------------------

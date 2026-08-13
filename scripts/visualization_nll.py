@@ -1,5 +1,7 @@
 """Visualisation helpers for heteroscedastic (mu, log-variance) predictions."""
 
+import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -120,10 +122,13 @@ def plot_delta_comparison(
 ) -> plt.Figure:
     """Compare, side by side, every way this pipeline highlights hidden detail.
 
-    A single figure with every "is this pixel a genuine hidden mark?"
-    signal produced across the pipeline, so they can be read at a glance
-    instead of scattered across notebook sections:
+    A single figure (3x2 grid) with the ground-truth IR plus every "is
+    this pixel a genuine hidden mark?" signal produced across the
+    pipeline, so they can be read at a glance instead of scattered
+    across notebook sections:
 
+    - **real IR** — ground-truth reference the other panels are computed
+      against;
     - **raw delta** ``|real - mu|`` — the original baseline; conflates
       genuine hidden detail with substrate/acquisition gray-level shifts;
     - **structural delta** (``1 - local SSIM structure``) — insensitive to
@@ -167,6 +172,7 @@ def plot_delta_comparison(
     z = (real - mu_sq) / (sigma_sq + 1e-8)
 
     panels = (
+        ("Real IR", real, None),
         ("Raw delta\n|real - mu|", raw_delta, None),
         ("Structural delta\n(1 - structure)", result.structural_delta, (0, 1)),
         ("Fixed-window\nnormalized delta", result.normalized_delta, None),
@@ -174,13 +180,83 @@ def plot_delta_comparison(
         ("Confidence\n(raw vs structural agreement)", result.confidence_map, (0, 1)),
     )
 
-    fig, axes = plt.subplots(1, len(panels), figsize=(4 * len(panels), 4.5))
+    n_cols = 3
+    n_rows = 2
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4.5 * n_rows))
     fig.suptitle(title)
-    for ax, (panel_title, data, vrange) in zip(axes, panels):
+    for ax, (panel_title, data, vrange) in zip(axes.flat, panels):
         vmin, vmax = vrange if vrange is not None else (None, None)
         im = ax.imshow(data, cmap="gray", vmin=vmin, vmax=vmax)
         ax.set_title(panel_title, fontsize=10)
         ax.axis("off")
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    return fig
+
+
+def plot_signal_comparison(
+    ir_real: np.ndarray,
+    signals: dict[str, np.ndarray],
+    title: str = "",
+    vrange: tuple[float, float] | None = None,
+    max_cols: int = 3,
+) -> plt.Figure:
+    """Compare one delta signal (raw, structural, ...) across several models.
+
+    The counterpart of ``plot_delta_comparison``: that one fixes the model
+    and compares signal *types* side by side; this one fixes the signal
+    type and compares *models* side by side, e.g. "raw delta for
+    unet_nll vs. resunet_nll vs. attention_unet_nll vs. efficientnet_unet_nll".
+
+    Always shows the ground-truth real IR as the first panel so every
+    model's signal can be read against the actual target, then one panel
+    per entry in ``signals``, wrapped at ``max_cols`` columns per row.
+
+    Parameters
+    ----------
+    ir_real : np.ndarray
+        Ground-truth IR of shape ``(H, W)`` or ``(H, W, 1)``.
+    signals : dict[str, np.ndarray]
+        Maps a model/architecture name to its 2D signal map (same shape
+        as ``ir_real``) for this one delta type.
+    title : str
+        Figure title.
+    vrange : tuple[float, float] | None
+        Shared ``(vmin, vmax)`` color-scale bound applied to every model
+        panel (not the real IR panel, which is always ``(0, 1)``) so the
+        models are visually comparable. If ``None``, uses the shared
+        min/max across all ``signals`` values.
+    max_cols : int
+        Maximum panels per row before wrapping to a new row.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    real = ir_real.squeeze()
+    arrays = {name: data.squeeze() for name, data in signals.items()}
+
+    if vrange is None:
+        vmin = min(a.min() for a in arrays.values())
+        vmax = max(a.max() for a in arrays.values())
+    else:
+        vmin, vmax = vrange
+
+    panels = [("Real IR", real, (0.0, 1.0))]
+    panels += [(name, data, (vmin, vmax)) for name, data in arrays.items()]
+
+    n = len(panels)
+    n_cols = min(max_cols, n)
+    n_rows = math.ceil(n / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4.5 * n_rows))
+    fig.suptitle(title)
+    axes_flat = np.atleast_1d(axes).flatten()
+    for ax, (panel_title, data, (pmin, pmax)) in zip(axes_flat, panels):
+        im = ax.imshow(data, cmap="gray", vmin=pmin, vmax=pmax)
+        ax.set_title(panel_title, fontsize=10)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    for ax in axes_flat[n:]:
+        ax.axis("off")
     plt.tight_layout()
     return fig

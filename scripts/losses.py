@@ -236,3 +236,58 @@ def gaussian_nll_loss(min_log_var: float = -6.0, max_log_var: float = 6.0) -> Ca
 
     loss.__name__ = "gaussian_nll_loss"
     return loss
+
+
+def beta_gaussian_nll_loss(
+    beta: float = 0.5, min_log_var: float = -6.0, max_log_var: float = 6.0
+) -> Callable:
+    """Return a beta-weighted Gaussian NLL loss (Seitzer et al. 2022).
+
+    Same heteroscedastic setup as :func:`gaussian_nll_loss` (``y_pred``
+    carries ``mu`` in channel 0, ``log_var`` in channel 1), but each
+    pixel's loss is weighted by ``sigma^(2*beta)`` with ``sigma`` detached
+    from the gradient (``tf.stop_gradient``)::
+
+        loss = stop_gradient(exp(log_var))^beta
+               * (0.5 * exp(-log_var) * (y_true - mu)^2 + 0.5 * log_var)
+
+    Plain Gaussian NLL naturally back-propagates a weaker gradient into
+    ``mu`` wherever the model has predicted a high variance, which can
+    starve high-uncertainty regions of learning signal and stall ``mu``
+    there. Weighting by ``sigma^(2*beta)`` (with the weight itself
+    excluded from the gradient) counteracts this without changing what
+    the loss is minimizing at convergence. ``beta = 0`` recovers the
+    plain Gaussian NLL exactly; ``beta = 1`` recovers plain MSE weighting
+    (uncertainty ignored in the gradient magnitude). See
+    ``code-review.md`` §7.6 and Seitzer et al., *"On the Pitfalls of
+    Heteroscedastic Uncertainty Estimation with Probabilistic Neural
+    Networks,"* ICLR 2022 (https://doi.org/10.48550/arXiv.2203.09168).
+
+    Parameters
+    ----------
+    beta : float
+        Weighting exponent in ``[0, 1]``. ``0`` = plain NLL, ``1`` = MSE-like
+        gradient weighting.
+    min_log_var : float
+        Lower clip bound applied to ``log_var`` before computing the loss,
+        for numerical stability.
+    max_log_var : float
+        Upper clip bound applied to ``log_var``.
+
+    Returns
+    -------
+    Callable
+        Loss function ``(y_true, y_pred) -> tf.Tensor`` compatible with
+        ``model.compile(loss=...)``, where ``y_pred`` has 2 channels.
+    """
+
+    def loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        mu = y_pred[..., 0:1]
+        log_var = tf.clip_by_value(y_pred[..., 1:2], min_log_var, max_log_var)
+        precision = tf.exp(-log_var)
+        nll = 0.5 * precision * tf.square(y_true - mu) + 0.5 * log_var
+        weight = tf.stop_gradient(tf.exp(log_var)) ** beta
+        return tf.reduce_mean(weight * nll)
+
+    loss.__name__ = "beta_gaussian_nll_loss"
+    return loss

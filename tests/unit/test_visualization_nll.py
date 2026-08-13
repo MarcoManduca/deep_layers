@@ -12,6 +12,7 @@ from scripts.delta_analysis import analyze_delta  # noqa: E402
 from scripts.visualization_nll import (  # noqa: E402
     plot_delta_comparison,
     plot_predictions_nll,
+    plot_signal_comparison,
     plot_zscore,
 )
 
@@ -46,5 +47,36 @@ def test_plot_delta_comparison_returns_figure() -> None:
     fig = plot_delta_comparison(result, ir_real, mu, sigma)
 
     assert isinstance(fig, Figure)
-    assert len(fig.axes) == 10  # 5 image panels + 5 colorbars
+    assert len(fig.axes) == 12  # 6 image panels + 6 colorbars
+    plt.close(fig)
+
+
+def test_plot_signal_comparison_returns_figure_with_four_models() -> None:
+    ir_real = _ir()
+    signals = {
+        "unet_nll": _ir(),
+        "resunet_nll": _ir(),
+        "attention_unet_nll": _ir(),
+        "efficientnet_unet_nll": _ir(),
+    }
+
+    fig = plot_signal_comparison(ir_real, signals, title="Raw delta comparison")
+
+    assert isinstance(fig, Figure)
+    # 5 panels (real IR + 4 models) wrapped at 3 cols -> 6-slot 2x3 grid,
+    # each occupied slot has an image + colorbar (5 x 2 = 10), plus 1
+    # turned-off empty axis for the unused 6th grid slot.
+    assert len(fig.axes) == 11
+    plt.close(fig)
+
+
+def test_plot_signal_comparison_respects_max_cols() -> None:
+    ir_real = _ir()
+    signals = {"unet_nll": _ir(), "resunet_nll": _ir()}
+
+    fig = plot_signal_comparison(ir_real, signals, max_cols=3)
+
+    # 3 panels (real IR + 2 models), all fit in a single row of 3 -> no
+    # empty axes to turn off.
+    assert len(fig.axes) == 6
     plt.close(fig)
