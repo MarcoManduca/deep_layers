@@ -356,14 +356,48 @@ loss that down-weights the variance term early in training.
 above) is implemented and selectable via `scripts.trainer_nll.NLL_LOSSES`
 (`compile_model_nll`/`load_model_nll`'s `loss_name`/`beta` parameters).
 `022_training_v2.ipynb` trains all four `*_nll` architectures with
-`beta_nll`, saved to a separate checkpoint tree (`models/nll_beta/<arch>/`)
-so the existing `gaussian_nll` checkpoints from `021_training_nll.ipynb`
-are preserved for comparison; `032_evaluation_v2.ipynb` and
-`062_model_comparison_v2.ipynb` compare the two loss variants
-quantitatively and qualitatively. This session's cross-architecture
-finding that plain `gaussian_nll` regresses `mae`/`psnr`/`ssim` on every
-architecture (see handoff/`031_evaluation_nll.ipynb`'s committed run) is
-the open question `beta_nll` is meant to address — not yet run.
+`beta_nll` (`beta=0.5`), saved to a separate checkpoint tree
+(`models/nll_beta/<arch>/`) so the existing `gaussian_nll` checkpoints from
+`021_training_nll.ipynb` are preserved for comparison.
+
+**Real run result (`032_evaluation_v2.ipynb`)**: `beta_nll` does **not**
+close the `gaussian_nll` regression — it widens it, on `mae`/`psnr`/`ssim`,
+on every one of the four architectures (e.g. `resunet_nll`: ssim
+0.4669→0.3577, psnr 18.63→14.99; smallest regression on
+`efficientnet_unet_nll`, ssim 0.5251→0.4150). See handoff for the full
+per-architecture table.
+
+**Evaluation methodology gap surfaced by this result**: `mae`/`ssim`/`psnr`
+(`MuMAEMetric`/`MuSSIMMetric`/`MuPSNRMetric`, `scripts/metrics.py`) read
+only the `mu` channel — by construction they cannot see whether `sigma` is
+any good, which is the entire point of this head. Qualitative inspection
+of `062_model_comparison_v2.ipynb` on `modern` (a real test pair built
+ad hoc with specific known hidden details) suggests the opposite of the
+quantitative result: the `beta_nll` z-score picks out most of the intended
+details better than `gaussian_nll`'s, just under-contrasted. The two
+signals (`mu` fidelity vs. `sigma`/z-score quality) are not the same thing
+and can move in opposite directions — β-NLL is explicitly a mu/sigma
+gradient trade-off (Seitzer et al. 2022), so this is plausible, not a bug.
+Three follow-ups identified (not yet implemented):
+
+1. **A calibration metric for `sigma`** — e.g. coverage probability or the
+   correlation between `|real_IR - mu|` and predicted `sigma` — to get a
+   numeric score for comparing NLL variants that doesn't route through
+   `mu` alone. Priority: gives a real number to decide `beta` and to
+   compare `gaussian_nll` vs. `beta_nll` (and future variants) on the
+   uncertainty signal itself.
+2. **Ground-truth-mask detection metric on `modern`** — `modern` is a
+   single, purpose-built image with known hidden-detail regions; annotate
+   a mask of those regions once and score every candidate signal (raw
+   delta, structural delta, z-score, per variant) against it with
+   AUROC/precision-recall. Most direct measure of "does this reveal what
+   it's supposed to reveal," feasible precisely because it's one image.
+3. **Parametric contrast control for the z-score plots** — `plot_zscore`/
+   `plot_delta_comparison`/`plot_signal_comparison`'s fixed `Z_VMAX=4.0`
+   clip may be flattening a real signal. Add a percentile- or
+   gamma-based contrast parameter, computed after the z-score maps exist,
+   so different "contrast levels" can be regenerated and compared without
+   re-predicting.
 
 ### 7.7. `unet_v2`: encoder/decoder downsampling/upsampling and regularization variants — IMPLEMENTED
 

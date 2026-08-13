@@ -112,3 +112,25 @@ Not yet evaluated on real (non-smoke-trained) checkpoints — see
 `.claude/handoff/HANDOFF.md` "Next steps" for the pending full training
 run and qualitative comparison on real paintings.
 
+### Update: evaluating the learned z-score itself, not just `mu`
+
+Now that all four `*_nll` architectures have real training runs with both
+`gaussian_nll` and `beta_nll` (`code-review.md` §7.6 "Update"), a gap
+became apparent: `mae`/`ssim`/`psnr` only ever compare `mu` against
+`real_IR` — they never look at `sigma`, so they cannot tell whether the
+learned z-score above is any good. On `modern` (a real test pair built ad
+hoc with specific known hidden details), the `beta_nll` z-score
+subjectively reveals more of the intended detail than `gaussian_nll`'s,
+despite `beta_nll` scoring worse on `mae`/`ssim`/`psnr` — the two are
+measuring different things and can disagree. Three follow-ups (not yet
+implemented):
+
+1. A calibration metric for `sigma` on its own (e.g. coverage probability,
+   or correlation between `|real_IR - mu|` and `sigma`).
+2. A ground-truth-mask detection metric (AUROC/precision-recall) on
+   `modern` specifically, since it's one purpose-built image with known
+   hidden-detail regions — annotate once, score every candidate signal.
+3. Parametric contrast control for the z-score plots (currently a fixed
+   `Z_VMAX=4.0` clip) — percentile- or gamma-based, applied after the
+   z-score maps are already computed.
+
