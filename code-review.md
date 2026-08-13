@@ -99,9 +99,9 @@ A real `pytest` suite and `ruff` configuration exist, but nothing runs them auto
 
 ## 5. Architecture-specific comments
 
-All four architectures (`unet.py`, `resunet.py`, `attention_unet.py`, `efficientnet_unet.py`) are purely convolutional, feed-forward encoder–decoders — no GAN/adversarial term, no diffusion process, no self-attention/transformer block anywhere in the codebase or notebooks (verified by a case-insensitive search for `gan|adversarial|discriminator|diffusion|transformer|vit\b`). Given the likely small size of a paired painting dataset (grouped train/val/test split by artwork ID, `config.py:67-68`), this is a defensible, low-data-friendly design rather than an oversight — see §7 for where a *more* data-hungry architecture would or would not be justified.
+The four original architectures (`unet.py`, `resunet.py`, `attention_unet.py`, `efficientnet_unet.py`) are purely convolutional, feed-forward encoder–decoders — no GAN/adversarial term, no diffusion process, no self-attention/transformer block. Given the likely small size of a paired painting dataset (grouped train/val/test split by artwork ID, `config.py:67-68`), this was a defensible, low-data-friendly starting point rather than an oversight — see §7 for where a *more* data-hungry architecture would or would not be justified. `scripts/unet_restormer.py` (§7.3) has since added one self-attention block, but scoped narrowly (bottleneck only, linear-cost channel attention) rather than adopting a data-hungry pure-transformer design (§7.4).
 
-- **`attention_unet.py`'s "attention" is CNN spatial gating, not self-attention.** `_attention_gate` (`attention_unet.py:31-65`) implements Oktay et al.'s additive gate — it reweights the encoder skip connection using the decoder's gating signal, but has no long-range/global receptive field. A true self-attention block at the bottleneck (where the receptive field is largest and spatial resolution smallest, so the quadratic cost of self-attention is cheapest) would let the model relate distant regions of the same painting — potentially useful since underdrawing strokes can be a coherent pattern spanning a whole figure, not just local texture. See §7.3 (Restormer) for a concrete, resolution-scalable way to do this.
+- **`attention_unet.py`'s "attention" is CNN spatial gating, not self-attention.** `_attention_gate` (`attention_unet.py:31-65`) implements Oktay et al.'s additive gate — it reweights the encoder skip connection using the decoder's gating signal, but has no long-range/global receptive field. A true self-attention block at the bottleneck (where the receptive field is largest and spatial resolution smallest, so the quadratic cost of self-attention is cheapest) would let the model relate distant regions of the same painting — potentially useful since underdrawing strokes can be a coherent pattern spanning a whole figure, not just local texture. `scripts/unet_restormer.py` (§7.3) implements this — on `unet`, not `attention_unet`, so the two mechanisms (spatial gating vs. channel self-attention) haven't yet been combined in one architecture.
 - **`_ResizeToMatch` in `efficientnet_unet.py`** (lines 18-35) is a well-targeted, minimal fix for the off-by-one skip/upsample mismatch caused by EfficientNet's floor-rounded stride-2 convolutions; no change recommended here, noting it only because it is the one architecture-specific engineering workaround in the codebase and would need re-verifying if the backbone is ever swapped (different backbones round dimensions differently or not at all).
 - **Bottleneck channel counts are inconsistent across from-scratch architectures vs. EfficientNet UNet**: `unet.py`/`resunet.py`/`attention_unet.py` all default to a 1024-channel bottleneck (e.g. `unet.py:68`) fed by a `[64,128,256,512]` encoder, while `efficientnet_unet.py`'s decoder starts at 256 channels (`efficientnet_unet.py:97`) because the frozen EfficientNetB0 backbone already outputs 1280 channels at the bottleneck. This isn't a bug (the two are genuinely different feature scales) but makes head-to-head parameter-count/capacity comparisons between the four architectures less apples-to-apples than the model-comparison notebook (`030_evaluation.ipynb`) might assume.
 
@@ -116,14 +116,15 @@ All four architectures (`unet.py`, `resunet.py`, `attention_unet.py`, `efficient
 
 ## 7. Alternative architectures
 
-The four current architectures (`unet.py`, `resunet.py`, `attention_unet.py`,
+The four original architectures (`unet.py`, `resunet.py`, `attention_unet.py`,
 `efficientnet_unet.py`) are all supervised, deterministic, purely
 convolutional encoder–decoders — no adversarial term, no diffusion process,
-no self-attention/transformer block anywhere in the codebase. This is
-well-suited to a small, artwork-grouped dataset, but the following
-directions are worth considering if the goal is to push prediction quality
-further, roughly ordered from "most compatible with a small dataset" to
-"most data-hungry."
+no self-attention/transformer block. This was well-suited to a small,
+artwork-grouped dataset, but the following directions are worth considering
+if the goal is to push prediction quality further, roughly ordered from
+"most compatible with a small dataset" to "most data-hungry." §7.6 and §7.7
+(heteroscedastic head, architectural ablations) and §7.3 (bottleneck
+self-attention) have since been implemented.
 
 ### 7.1. Adversarial term (PatchGAN / pix2pix-style)
 
@@ -163,7 +164,7 @@ data — while closing most of the accuracy gap to transformers.
   Masked Autoencoders,"* CVPR, 2023.
   https://doi.org/10.48550/arXiv.2301.00808
 
-### 7.3. Efficient transformer block at the bottleneck (Restormer)
+### 7.3. Efficient transformer block at the bottleneck (Restormer) — IMPLEMENTED
 
 Rather than replacing a whole architecture, insert a Restormer-style
 transposed-attention block only at the bottleneck (smallest spatial
@@ -176,6 +177,44 @@ resolution — relevant here since paintings are processed via
 - S.W. Zamir et al., *"Restormer: Efficient Transformer for High-Resolution
   Image Restoration,"* CVPR, 2022 (oral).
   https://doi.org/10.48550/arXiv.2111.09881
+
+**Implementation**: `scripts/unet_restormer.py` (`build_unet_restormer`,
+`RestormerBlock`) — a single Restormer transformer block inserted right
+after the existing bottleneck `_conv_block`, otherwise identical to
+`unet.py`. `RestormerBlock` implements the two Restormer sub-blocks with
+pre-norm residual connections:
+
+- **MDTA** (Multi-Dconv Head Transposed Attention): 1x1 conv + depthwise
+  3x3 conv produce `(q, k, v)`; attention is a `(head_dim, head_dim)` map
+  per head computed across channels rather than spatial positions, cost
+  `O(H*W*head_dim^2)` — linear in image size, as opposed to the `O((HW)^2)`
+  cost of ordinary spatial self-attention.
+- **GDFN** (Gated-Dconv Feed-Forward Network): 1x1 conv expansion,
+  depthwise 3x3 conv, then `GELU(x1) * x2` gating on the split expanded
+  channels before projecting back down.
+
+Registered as a new, independent architecture (`"unet_restormer"`) in
+`scripts/trainer.py`'s `_BUILDERS`/`compile_model` — checkpoints save to
+`models/unet_restormer/`, never colliding with `unet`/`unet_v2`. Directly
+answers the gap noted in §5 (`attention_unet.py`'s gate has no long-range
+receptive field): this block gives the network a genuinely global
+receptive field, but only at the bottleneck, keeping the cost low.
+
+Covered by `tests/unit/test_unet_restormer.py`: `RestormerBlock` presence
+at the bottleneck, `dim`/`num_heads` divisibility validation, output
+shape/range on both square and non-square inputs (exercises the dynamic
+`tf.shape`-based reshape inside the attention computation), a save/load
+round-trip regression test (`RestormerBlock` is
+`register_keras_serializable`-decorated with a `get_config` override —
+fourth instance of this bug class in the project, after `ClipLogVar`,
+`_ResizeToMatch`, and `_Upsample2x`), and standalone `RestormerBlock`
+shape/finiteness checks. `unet_restormer` also added to the generic
+architecture builder tests (`tests/unit/test_models.py`). Build, compile,
+and a real-data smoke fit/save/load/predict round trip verified in temp
+`models`/`logs` dirs (including a non-square `64x96` prediction). Not yet
+trained end-to-end — `022_training_v2.ipynb`/`032_evaluation_v2.ipynb`/
+`062_model_comparison_v2.ipynb` train/evaluate/compare it alongside
+`unet_v2` and `unet`.
 
 ### 7.4. Pure transformer U-Net (Swin-UNet) — use with caution
 
