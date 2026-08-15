@@ -126,11 +126,54 @@ measuring different things and can disagree. Three follow-ups (not yet
 implemented):
 
 1. A calibration metric for `sigma` on its own (e.g. coverage probability,
-   or correlation between `|real_IR - mu|` and `sigma`).
+   or correlation between `|real_IR - mu|` and `sigma`). — **IMPLEMENTED**,
+   see below.
 2. A ground-truth-mask detection metric (AUROC/precision-recall) on
    `modern` specifically, since it's one purpose-built image with known
    hidden-detail regions — annotate once, score every candidate signal.
+   **Still open** — the one follow-up that needs manual annotation.
 3. Parametric contrast control for the z-score plots (currently a fixed
    `Z_VMAX=4.0` clip) — percentile- or gamma-based, applied after the
-   z-score maps are already computed.
+   z-score maps are already computed. — **IMPLEMENTED**, see below.
+
+### Update: `scripts/calibration.py` and `scripts/contrast.py`
+
+**Follow-up 1** is `scripts/calibration.py`: post-hoc, NumPy-only, working
+on the `(mu, sigma)` arrays that inference already produces, so every
+existing checkpoint can be scored without retraining. It reports coverage
+probability at `+/- k*sigma` against the nominal Gaussian value, a
+reliability curve over equal-population `sigma` bins with its ENCE summary
+(Levi et al.), the Spearman correlation between `|real_IR - mu|` and
+`sigma`, the moments of the learned z-score (`z_std = 1` when calibrated),
+the mean Gaussian NLL as a proper scoring rule, and — deliberately
+alongside them — sharpness and dispersion. The last two are the guard
+against the degenerate case: a large *constant* `sigma` scores as
+perfectly calibrated while reducing the learned z-score to a rescaled raw
+delta, so `dispersion ~ 0` invalidates a good calibration score rather
+than confirming it. `evaluate_calibration(...).summary()` returns one flat
+row per model, tabulated per architecture in `032_evaluation_v2.ipynb`
+§4b; `visualization_nll.plot_calibration` draws the reliability diagram,
+the coverage bars and the z-histogram against `N(0, 1)`.
+
+**Follow-up 3** is `scripts/contrast.py`: `ZScale` makes the display limit
+a parameter — either fixed (`|z| <= 4`, the original behaviour and still
+the default) or a percentile of `|z|` in the maps being shown — with an
+optional gamma compression of the ramp, so faint detail at `|z| ~ 1` can
+be expanded without touching what was computed. Everything is applied
+*after* the z-score maps exist, so contrast variants are compared by
+re-plotting, never by re-predicting. `ZScale.apply_many` derives a single
+shared limit across several models, which is what keeps a cross-
+architecture figure honest; `062_model_comparison_v2.ipynb` §2c sweeps
+fixed / p99.5 / p99.5+gamma over the four `beta_nll` architectures.
+
+Both are wired into `plot_zscore` / `plot_delta_comparison` (the `vmax` /
+`z_vmax` arguments became a single `z_scale`), and `learned_zscore` in
+`calibration.py` is now the single definition of `(real - mu) / sigma`
+shared by the plots and the metrics, so the signal being scored and the
+signal being displayed cannot drift apart.
+
+Note what this does **not** settle: these metrics say whether `sigma` is
+*trustworthy*, not whether the z-score *reveals underdrawings*. Only
+follow-up 2 answers that, and it remains the gate on the `gaussian_nll`
+vs. `beta_nll` question.
 

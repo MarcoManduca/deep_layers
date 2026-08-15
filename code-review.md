@@ -378,7 +378,7 @@ details better than `gaussian_nll`'s, just under-contrasted. The two
 signals (`mu` fidelity vs. `sigma`/z-score quality) are not the same thing
 and can move in opposite directions — β-NLL is explicitly a mu/sigma
 gradient trade-off (Seitzer et al. 2022), so this is plausible, not a bug.
-Three follow-ups identified (not yet implemented):
+Three follow-ups identified (1 and 3 now implemented — see §7.8):
 
 1. **A calibration metric for `sigma`** — e.g. coverage probability or the
    correlation between `|real_IR - mu|` and predicted `sigma` — to get a
@@ -450,3 +450,77 @@ fit/save/load round trip were verified in this session (temp
 (`use_strided_conv=True, use_upsample_conv=True, dropout_rate=0.2`),
 `032_evaluation_v2.ipynb`/`062_model_comparison_v2.ipynb` compare it
 against `unet`.
+
+### 7.8. Calibration metrics for `sigma` and parametric z-score contrast — IMPLEMENTED
+
+Follow-ups 1 and 3 of §7.6, implemented as two new post-hoc modules. Both
+operate on the `(mu, sigma)` arrays inference already produces, so every
+existing checkpoint is scoreable and re-renderable without retraining and
+without touching any architecture.
+
+**`scripts/calibration.py`** — scores `sigma` on its own, closing the
+"`mae`/`ssim`/`psnr` only ever see `mu`" gap:
+
+| Metric | Reads | Calibrated value |
+|---|---|---|
+| `coverage_probability` | fraction of pixels inside `+/- k*sigma` | nominal `erf(k/sqrt2)`: `0.683`/`0.954`/`0.997` |
+| `sigma_reliability` / `ence` | predicted vs. observed error per equal-population `sigma` bin (Levi et al.) | `0` |
+| `z_std` | spread of `(real - mu) / sigma` | `1` (`>1` overconfident, `<1` under) |
+| `error_sigma_correlation` | Spearman of `abs(real - mu)` vs. `sigma` | high = knows where it errs |
+| `mean_gaussian_nll` | proper scoring rule, in nats | lower is better |
+| `sharpness` / `dispersion` | mean `sigma`, and its coefficient of variation | see below |
+
+The last row is not decoration. Calibration alone is trivially gamed by a
+large constant `sigma`, which would score perfectly while collapsing the
+learned z-score into a rescaled raw delta — `dispersion ~ 0` is therefore
+a *disqualifier*, not a neutral statistic, and calibration and sharpness
+have to be read as a pair (Gneiting et al. 2007). `mean_gaussian_nll`
+keeps the `0.5*log(2*pi)` constant that `losses.gaussian_nll_loss` drops
+(irrelevant to gradients, necessary for a comparable likelihood), and is
+the natural tie-breaker when the `mu`-only metrics and the calibration
+metrics disagree — precisely the `gaussian_nll` vs. `beta_nll` situation.
+`evaluate_calibration(...).summary()` yields one flat row per model;
+`032_evaluation_v2.ipynb` §4b tabulates all four architectures x both loss
+variants, and `visualization_nll.plot_calibration` draws the reliability
+diagram, coverage bars and z-histogram against `N(0, 1)`.
+
+**`scripts/contrast.py`** — `ZScale` turns the hard-coded `Z_VMAX=4.0`
+into a parameter: `FIXED` (the previous behaviour, still the default, and
+the only mode comparable across images since it ignores the data) or
+`PERCENTILE` of `|z|`, plus an optional `gamma` compression of the ramp
+that expands faint detail at `|z| ~ 1`. Everything applies *after* the
+z-score maps exist, so contrast variants cost a re-plot, not a
+re-prediction. `ZScale.apply_many` computes one limit shared across
+several models and returns it together with the scaled maps — the
+cross-architecture figures in `060`/`062` were previously sharing a
+hard-coded `vrange` by hand, which silently breaks the moment anyone
+changes it in one cell and not another. `plot_zscore` and
+`plot_delta_comparison` took a `z_scale` argument in place of
+`vmax`/`z_vmax`; `062_model_comparison_v2.ipynb` §2c sweeps
+fixed / p99.5 / p99.5+gamma 0.5 over the four `beta_nll` architectures.
+
+`calibration.learned_zscore` is now the single definition of
+`(real - mu) / sigma`, replacing the inline `(real - mu) / (sigma + 1e-8)`
+that had been copied across `visualization_nll.py` and two notebooks, so
+the signal being scored and the signal being displayed cannot drift apart.
+
+Covered by `tests/unit/test_calibration.py` and
+`tests/unit/test_contrast.py` (100% line coverage on both modules), which
+verify the metrics against synthetically calibrated, overconfident and
+underconfident predictions rather than against fixed expected numbers.
+
+**What this does not settle**: these metrics say whether `sigma` is
+*trustworthy*, not whether the z-score *reveals underdrawings*. Follow-up
+2 of §7.6 (ground-truth mask on `modern`) remains the only thing that
+answers the latter, and remains the gate on `gaussian_nll` vs. `beta_nll`.
+
+- D. Levi, L. Gispan, N. Giladi, E. Fetaya, *"Evaluating and Calibrating
+  Uncertainty Prediction in Regression Tasks,"* Sensors, 2022.
+  https://doi.org/10.48550/arXiv.1905.11659 — ENCE and the binned
+  reliability diagram for regression uncertainty.
+- T. Gneiting, F. Balabdaoui, A.E. Raftery, *"Probabilistic forecasts,
+  calibration and sharpness,"* JRSS-B, 2007.
+  https://doi.org/10.1111/j.1467-9868.2007.00587.x — the principle that
+  calibration must be maximised *subject to* sharpness, which is why
+  `dispersion` is reported next to the calibration scores.
+
