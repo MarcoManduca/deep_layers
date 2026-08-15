@@ -131,7 +131,7 @@ implemented):
 2. A ground-truth-mask detection metric (AUROC/precision-recall) on
    `modern` specifically, since it's one purpose-built image with known
    hidden-detail regions — annotate once, score every candidate signal.
-   **Still open** — the one follow-up that needs manual annotation.
+   — **SUPERSEDED**, see "A reference that isn't hand-drawn" below.
 3. Parametric contrast control for the z-score plots (currently a fixed
    `Z_VMAX=4.0` clip) — percentile- or gamma-based, applied after the
    z-score maps are already computed. — **IMPLEMENTED**, see below.
@@ -173,7 +173,71 @@ shared by the plots and the metrics, so the signal being scored and the
 signal being displayed cannot drift apart.
 
 Note what this does **not** settle: these metrics say whether `sigma` is
-*trustworthy*, not whether the z-score *reveals underdrawings*. Only
-follow-up 2 answers that, and it remains the gate on the `gaussian_nll`
-vs. `beta_nll` question.
+*trustworthy*, not whether the z-score *reveals underdrawings*. That is
+what the next section addresses.
+
+## A reference that isn't hand-drawn
+
+Follow-up 2 above proposed annotating a mask on `modern` and scoring every
+candidate signal against it. That plan was dropped, for three reasons:
+`modern` is **one** image (no statistical power); its hidden details were
+placed by someone who knows what the pipeline looks for (bias of
+construction); and a modern mock-up has neither the pigments, the ageing,
+the varnish nor the support of an aged panel (material mismatch). It is
+kept as a *positive control* — "if it fails here, it is broken" — not as
+a criterion.
+
+The replacement rests on an observation: the ground truth is not missing,
+it is merely unlabelled. There are 24 real artworks with paired RGB and
+IR, and "hidden detail" has an operational definition that needs no human
+— **structure present in the IR and not explained by the RGB**. Both
+halves already fall out of `delta_analysis.compute_local_stats`, run
+cross-modally on `(real_IR, grayscale RGB)` instead of on
+`(real_IR, predicted_IR)`: `var_real` is how much structure the IR carries,
+and the local correlation is how much of it the RGB accounts for.
+
+Three modules implement the evaluation:
+
+- **`scripts/pseudo_mask.py`** — `score = normalised local IR contrast *
+  (1 - |local correlation(IR, RGB)|)`, plus `binarize(percentile)`. Two
+  details decide whether this works at all. The **absolute value**: an IR
+  anti-correlated with the RGB (dark paint reading bright, very common) is
+  fully explained, just with inverted sign, and the signed term would flag
+  every such region as hidden detail. And an **absolute floor** on the
+  contrast factor: normalising by a percentile alone is a relative scale,
+  which on a uniform IR region rescales floating-point noise up to `1.0`
+  and reports a flat area as maximal detail. Both were found by tests
+  written before the numbers were trusted, not after.
+- **`scripts/detection.py`** — AUROC, average precision and lift of any
+  magnitude map against any mask, plus `rank_signals` for the whole table
+  at once. Prevalence is always reported next to average precision, since
+  the latter's chance level *is* the prevalence.
+- **`scripts/stroke_stats.py`** — the unsupervised second axis, needing no
+  reference of any kind. An underdrawing is made of oriented, elongated
+  strokes; prediction noise is isotropic. Structure-tensor coherence
+  separates them without knowing where the strokes are (a straight stroke
+  scores ~0.94, uniform noise ~0.08) and is invariant to signal scale, so
+  a raw delta and a z-score are directly comparable.
+
+`033_signal_evaluation.ipynb` runs both axes over the test fold and, in
+its last section, correlates them. That correlation is the actual result:
+the two references fail in different ways, so agreement means the ranking
+is robust and disagreement means at least one of them is scoring an
+artefact.
+
+Two limits, dictated by construction rather than by effort:
+
+1. The pseudo-mask marks a **superset** — canvas weave, wood grain,
+   fillers and restorations are all IR structure the RGB cannot explain.
+2. It is a fair referee **across models**, not across signal types: it
+   shares its windowed-structure form with `delta_analysis`'s structural
+   delta, which therefore scores well against it by construction rather
+   than on merit. Rank architectures within one signal type; when signal
+   types must be compared, `stroke_stats` — which shares nothing with this
+   construction — is the tie-breaker.
+
+Neither axis measures "found the underdrawing". They measure properties a
+signal would *necessarily* have. That is a better proxy than `modern` on
+generality and statistical power, and it is still a proxy: the full answer
+comes from a conservator's eye on a real painting.
 

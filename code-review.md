@@ -524,3 +524,79 @@ answers the latter, and remains the gate on `gaussian_nll` vs. `beta_nll`.
   calibration must be maximised *subject to* sharpness, which is why
   `dispersion` is reported next to the calibration scores.
 
+
+### 7.9. Model-independent signal evaluation (pseudo-mask + stroke coherence) — IMPLEMENTED
+
+Supersedes follow-up 2 of §7.6. The original plan — hand-annotate a mask on
+`modern` and score every candidate signal against it — was dropped: `modern`
+is a single purpose-built pair (no statistical power), its hidden details were
+placed by someone who knows what the pipeline looks for (bias of construction),
+and a modern mock-up matches an aged panel in neither pigments, ageing, varnish
+nor support. It stays as a positive control, not as a criterion.
+
+The replacement uses the 24 real artworks already available. "Hidden detail"
+has an operational definition needing no annotator — **structure present in the
+IR and not explained by the RGB** — and both halves fall out of
+`delta_analysis.compute_local_stats` run cross-modally on
+`(real_IR, grayscale RGB)`.
+
+**`scripts/pseudo_mask.py`** — `score = normalised local IR contrast *
+(1 - |local correlation(IR, RGB)|)`, with `binarize(percentile)` for a boolean
+reference. Two details decide whether it works, both surfaced by tests written
+before the output was trusted:
+
+- **the absolute value**. An IR anti-correlated with the RGB (dark paint
+  reading bright, common) is fully explained, just with inverted sign; the
+  signed term would flag every such region as hidden detail. Note this also
+  rules out reusing `compute_ssim_components`'s `structure` term directly: its
+  `c3` stabiliser adds to numerator and denominator with the same sign, leaving
+  a perfect positive correlation at exactly `1` while pulling a perfect
+  negative one towards `0` — so on low-contrast texture "fully explained,
+  inverted" reads as "unexplained". The correlation is computed from
+  `LocalStats` directly instead.
+- **an absolute floor on the contrast factor** (`_MIN_CONTRAST = 1e-3`, a
+  quarter of one 8-bit gray level). Normalising by a percentile alone is a
+  relative scale: on a uniform IR region it rescales floating-point noise up to
+  `1.0` and reports a flat area as maximal hidden detail.
+
+**`scripts/detection.py`** — AUROC, average precision and lift for any
+magnitude map against any mask (`sklearn`, already a pinned dependency), plus
+`rank_signals` for the full table sorted best-first. Prevalence is reported
+next to average precision because the latter's chance level *is* the
+prevalence; comparing AP across images of differing mask density without it is
+meaningless. Signals must be magnitudes — `abs(z)`, not signed `z`.
+
+**`scripts/stroke_stats.py`** — the unsupervised second axis, needing no
+reference at all. An underdrawing is made of oriented, elongated strokes;
+prediction noise is isotropic. Structure-tensor coherence
+(`skimage`, also already pinned) separates them without knowing where the
+strokes are: a straight stroke scores ~`0.94`, uniform noise ~`0.08`. It is
+invariant to signal scale — both eigenvalues scale with the square of the
+signal — so a raw delta and a z-score are directly comparable, and it is
+weighted by gradient energy so flat regions, where the ratio is numerically
+meaningless, cannot dominate.
+
+`033_signal_evaluation.ipynb` runs both axes over the test fold and correlates
+them in its final section. That correlation is the result worth reading: the
+two references fail in different ways, so agreement means the ranking is
+robust and disagreement means at least one is scoring an artefact.
+
+Two limits, structural rather than incidental:
+
+1. The pseudo-mask marks a **superset** of what a conservator wants — canvas
+   weave, wood grain, fillers and old restorations are all unexplained IR
+   structure.
+2. It is a fair referee **across models** (it cannot know which architecture
+   produced what) but **not across signal types**: it shares its windowed
+   structure statistic with `delta_analysis`'s structural delta, which
+   therefore scores well against it by construction. Verified on synthetic
+   data — a structural delta reaches AUROC `1.000` there while a raw delta of
+   the same prediction reaches `0.653`. Rank architectures within one signal
+   type; use `stroke_stats` as the tie-breaker across types.
+
+Neither axis measures "found the underdrawing" — both measure properties such
+a signal would necessarily have. Better than `modern` on generality and
+statistical power, still a proxy.
+
+Covered by `tests/unit/test_pseudo_mask.py`, `tests/unit/test_detection.py` and
+`tests/unit/test_stroke_stats.py` (100% line coverage on all three).
