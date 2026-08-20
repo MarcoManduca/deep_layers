@@ -15,6 +15,7 @@ from scripts.calibration import (
     nominal_coverage,
     sharpness,
     sigma_reliability,
+    structural_zscore,
 )
 
 _SIZE = (200, 200)
@@ -266,3 +267,39 @@ def test_evaluate_calibration_summary_values_are_plain_floats() -> None:
     summary = evaluate_calibration(real, mu, sigma).summary()
 
     assert all(isinstance(value, float) for value in summary.values())
+
+
+def test_structural_zscore_matches_direct_division_with_no_smoothing() -> None:
+    rng = np.random.default_rng(0)
+    structural_delta = rng.uniform(0.0, 1.0, size=_SIZE).astype(np.float32)
+    sigma = rng.uniform(0.05, 0.5, size=_SIZE).astype(np.float32)
+
+    result = structural_zscore(structural_delta, sigma, window_size=1)
+
+    np.testing.assert_allclose(
+        result, structural_delta / (sigma + 1e-8), rtol=1e-5, atol=1e-6
+    )
+
+
+def test_structural_zscore_is_nonnegative() -> None:
+    rng = np.random.default_rng(1)
+    structural_delta = rng.uniform(0.0, 1.0, size=_SIZE).astype(np.float32)
+    sigma = rng.uniform(0.01, 0.5, size=_SIZE).astype(np.float32)
+
+    result = structural_zscore(structural_delta, sigma)
+
+    assert np.all(result >= 0.0)
+
+
+def test_structural_zscore_dampens_high_sigma_regions() -> None:
+    # Same structural discordance everywhere, but the model is confident on
+    # the left half and uncertain (plausible RGB->IR ambiguity) on the right.
+    structural_delta = np.ones(_SIZE, dtype=np.float32)
+    sigma = np.full(_SIZE, 0.05, dtype=np.float32)
+    sigma[:, _SIZE[1] // 2 :] = 0.5
+
+    result = structural_zscore(structural_delta, sigma)
+
+    confident_side = result[:, : _SIZE[1] // 4].mean()
+    uncertain_side = result[:, -_SIZE[1] // 4 :].mean()
+    assert confident_side > uncertain_side

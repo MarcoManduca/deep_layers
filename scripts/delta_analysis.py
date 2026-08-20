@@ -22,8 +22,12 @@ def _gaussian_kernel_1d(size: int, sigma: float) -> np.ndarray:
     return g / g.sum()
 
 
-def _local_filter(x: np.ndarray, size: int, sigma: float) -> np.ndarray:
+def gaussian_local_filter(x: np.ndarray, size: int, sigma: float) -> np.ndarray:
     """Apply a separable Gaussian filter with ``reflect`` padding.
+
+    Public so other modules can smooth a map with the exact same window used
+    here (e.g. ``scripts.calibration.structural_zscore`` smoothing ``sigma``
+    to match ``structural_delta``'s window before combining them).
 
     Parameters
     ----------
@@ -98,12 +102,12 @@ def compute_local_stats(
     -------
     LocalStats
     """
-    mu_real = _local_filter(real, window_size, sigma)
-    mu_pred = _local_filter(pred, window_size, sigma)
+    mu_real = gaussian_local_filter(real, window_size, sigma)
+    mu_pred = gaussian_local_filter(pred, window_size, sigma)
 
-    var_real = _local_filter(real * real, window_size, sigma) - mu_real**2
-    var_pred = _local_filter(pred * pred, window_size, sigma) - mu_pred**2
-    cov = _local_filter(real * pred, window_size, sigma) - mu_real * mu_pred
+    var_real = gaussian_local_filter(real * real, window_size, sigma) - mu_real**2
+    var_pred = gaussian_local_filter(pred * pred, window_size, sigma) - mu_pred**2
+    cov = gaussian_local_filter(real * pred, window_size, sigma) - mu_real * mu_pred
 
     return LocalStats(mu_real, mu_pred, var_real, var_pred, cov)
 

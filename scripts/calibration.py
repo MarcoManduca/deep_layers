@@ -45,6 +45,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.stats import spearmanr
 
+from scripts.delta_analysis import gaussian_local_filter
+
 _EPS = 1e-8
 
 DEFAULT_COVERAGE_LEVELS = (1.0, 2.0, 3.0)
@@ -77,6 +79,61 @@ def learned_zscore(
     mean = mu.squeeze().astype(np.float32)
     scale = sigma.squeeze().astype(np.float32)
     return (real - mean) / (scale + _EPS)
+
+
+def structural_zscore(
+    structural_delta: np.ndarray,
+    sigma: np.ndarray,
+    window_size: int = 11,
+    gauss_sigma: float = 1.5,
+) -> np.ndarray:
+    """Normalize the structural delta by the model's own local uncertainty.
+
+    ``structural_delta`` (``scripts.delta_analysis.analyze_delta``) is the
+    best-performing detection signal found so far (`033_bis`, both against
+    the cross-modal pseudo-mask and against real hand-drawn ground truth) —
+    but it is a purely deterministic function of ``(real_IR, mu)``, blind to
+    whether the model itself found this region ambiguous. ``sigma`` is
+    exactly that signal: a real paint color can plausibly map to several IR
+    gray levels, and a well-trained heteroscedastic head should read that
+    ambiguity as high ``sigma``, not as hidden detail. ``learned_zscore``
+    already divides by ``sigma`` but normalizes ``raw_delta``, which
+    `033_bis` found carries much less detection signal than the structural
+    component — so this divides the *better* signal by the *same*
+    uncertainty instead, keeping the benefit of both: a structurally
+    discordant region the model was also confident about is *more*
+    remarkable, one it was uncertain about (plausible color ambiguity) is
+    discounted.
+
+    ``sigma`` is smoothed with the same Gaussian window used to compute
+    ``structural_delta`` (``scripts.delta_analysis.compute_local_stats``)
+    before dividing — combining a windowed quantity with a raw per-pixel one
+    would reintroduce exactly the single-pixel noise the windowing exists to
+    remove.
+
+    Parameters
+    ----------
+    structural_delta : np.ndarray
+        ``1 - local SSIM structure`` between ``real_IR`` and ``mu``, shape
+        ``(H, W)`` (``scripts.delta_analysis.analyze_delta`` or
+        ``compute_ssim_components``). Already non-negative.
+    sigma : np.ndarray
+        Predicted standard deviation, same shape convention as
+        ``structural_delta``.
+    window_size, gauss_sigma : float
+        Must match the window ``structural_delta`` was computed with, so the
+        two maps line up pixel-for-pixel.
+
+    Returns
+    -------
+    np.ndarray
+        Non-negative magnitude map, shape ``(H, W)`` — ready to hand to
+        ``scripts.detection.rank_signals`` without an ``abs()``, since
+        ``structural_delta`` is already unsigned and ``sigma`` is positive.
+    """
+    scale = sigma.squeeze().astype(np.float32)
+    smoothed = gaussian_local_filter(scale, window_size, gauss_sigma)
+    return structural_delta / (smoothed + _EPS)
 
 
 def nominal_coverage(k: float) -> float:
