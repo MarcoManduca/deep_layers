@@ -6,7 +6,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scripts.calibration import CalibrationResult, learned_zscore
-from scripts.contrast import ZScale
+from scripts.contrast import ZScale, ZScaleMode
+
+# Chosen 2026-08-20 after visually comparing fixed |z| <= 4, p99.5, and
+# p99.5 + gamma 0.5 across all data/test/ ground-truth images
+# (062_model_comparison_v2.ipynb §2c): the plain percentile clip reads
+# slightly better than the fixed baseline, while adding gamma compression
+# hurt readability rather than helping, so gamma is left at 1.0.
+DEFAULT_Z_SCALE = ZScale(mode=ZScaleMode.PERCENTILE, percentile=99.5)
 
 
 def plot_predictions_nll(
@@ -82,10 +89,11 @@ def plot_zscore(
         Figure title.
     z_scale : ZScale or None
         Contrast settings for the z-score panel
-        (``scripts.contrast.ZScale``). Defaults to the plain ``|z| <= 4``
-        clip; use a percentile mode and/or ``gamma < 1`` to bring out faint
-        detail. The chosen setting is written into the panel title, so a
-        figure always states the contrast it was rendered at.
+        (``scripts.contrast.ZScale``). Defaults to ``DEFAULT_Z_SCALE``
+        (percentile ``p99.5``, no gamma — chosen over the fixed ``|z| <= 4``
+        clip and over adding gamma compression, see module docstring).
+        The chosen setting is written into the panel title, so a figure
+        always states the contrast it was rendered at.
 
     Returns
     -------
@@ -95,7 +103,7 @@ def plot_zscore(
     mu_sq = mu.squeeze()
     sigma_sq = sigma.squeeze()
     raw_delta = np.abs(real - mu_sq)
-    scaled = (z_scale or ZScale()).apply(learned_zscore(ir_real, mu, sigma))
+    scaled = (z_scale or DEFAULT_Z_SCALE).apply(learned_zscore(ir_real, mu, sigma))
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle(title)
@@ -167,8 +175,8 @@ def plot_delta_comparison(
         Figure title.
     z_scale : ZScale or None
         Contrast settings for the learned z-score panel
-        (``scripts.contrast.ZScale``). Defaults to the plain ``|z| <= 4``
-        clip.
+        (``scripts.contrast.ZScale``). Defaults to ``DEFAULT_Z_SCALE``
+        (percentile ``p99.5``, no gamma — see module docstring).
 
     Returns
     -------
@@ -177,7 +185,7 @@ def plot_delta_comparison(
     real = ir_real.squeeze()
     mu_sq = mu.squeeze()
     raw_delta = np.abs(real - mu_sq)
-    scaled = (z_scale or ZScale()).apply(learned_zscore(ir_real, mu, sigma))
+    scaled = (z_scale or DEFAULT_Z_SCALE).apply(learned_zscore(ir_real, mu, sigma))
 
     panels = (
         ("Real IR", real, None),
