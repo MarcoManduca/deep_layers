@@ -1,83 +1,72 @@
-# Ground-truth mask for detection-metric evaluation (`modern`)
+# Hand-drawn ground-truth masks for `data/test/`
 
-Procedure for annotating `data/test/rgb|ir/modern.jpg` with a binary
-ground-truth mask, to be used as the basis for a detection metric
-(AUROC/precision-recall) that scores hidden-detail signals (raw delta,
-structural delta, learned z-score, ...) against what `modern` was
-actually built to contain — see `code-review.md` §7.6 "Update:
-evaluating the learned z-score itself" and `note.md`'s matching section
-for the motivation (why `mae`/`ssim`/`psnr`, which only compare `mu`,
-can't answer this).
+Procedure for annotating hidden-detail regions on the images in
+`data/test/{rgb,ir}/`, so `033_bis_signal_evaluation_annotated.ipynb` can
+score every candidate signal (raw delta, structural delta, learned
+z-score, per architecture and per loss variant) against a real reference
+with `scripts/detection.py`, instead of the cross-modal pseudo ground
+truth `033_signal_evaluation.ipynb` uses on the unannotated main corpus.
 
-Not yet implemented — decision on whether/when to build the actual
-detection-metric notebook is still open.
+## Why these images specifically
 
-## 1. Create the mask image
+Every image in `data/test/` (`case`, `green`, `modern`, `total`, and any
+added later) is known to carry hidden detail attributable to a specific,
+identified cause (underdrawing, pentimento, reused support, etc.) — this
+is domain knowledge from outside the codebase, not something inferred
+from the images themselves. That is what makes hand-annotating them
+worthwhile: unlike the main training/validation/test corpus
+(`data/ir`/`data/rgb`, evaluated in `033`), where the only systematic
+RGB/IR difference is paint-stroke thickness rather than documented hidden
+content (see `evaluation.md` §3), a mask drawn on these images is a real
+positive reference, not an artifact.
 
-- Trace, by hand, the region(s) of `modern` known to contain the
-  intentionally hidden detail (it's a real test image built ad hoc for
-  this purpose, so the ground truth is known by construction, not
-  inferred).
-- **Resolution**: ideally the same pixel dimensions as
-  `data/test/ir/modern.jpg` (or `rgb/modern.jpg`, same size). If the
-  annotation tool forces a different canvas size, resize the mask back
-  to that exact resolution before use — avoid resizing the source image
-  instead, to not lose ground-truth precision at the edges.
-- **Format**: PNG, not JPEG. JPEG compression blurs edges and turns a
-  binary mask into a gradient of near-white/near-black pixels, which
-  breaks a clean 0/255 threshold.
-- **Color convention**: white (255) = hidden-detail area, black (0) =
-  everything else. If it's useful later to distinguish detail *types*
-  (e.g. pentimento vs. reused support), use distinct gray levels instead
-  of a strict binary — not needed for a first pass.
-- **Tooling**: any local image editor with a pen/lasso tool works
-  (Preview, GIMP, Photoshop, ...). No new dependency needed.
-  - If a browser-based annotation tool is preferred instead:
-    **makesense.ai** (free, no login, runs client-side, brush/polygon
-    tools, exports both mask images and JSON/COCO) or **VGG Image
-    Annotator (VIA)** (single self-contained HTML file, polygon/box
-    oriented, exports JSON) are common no-install options.
-- **Save to**: `data/test/annotations/modern_mask.png` (new directory;
-  `data/test/` is already gitignored, so this won't need a separate
-  ignore rule).
+## Mask format
 
-## 2. Load the mask
+- **PNG**, not JPEG (no lossy compression at a hard 0/255 boundary).
+- **Same pixel resolution** as the corresponding `data/test/rgb/<stem>.jpg`
+  / `data/test/ir/<stem>.jpg` (they're already the same size as each
+  other).
+- **Grayscale or RGB**, white (`255`) marks a hidden-detail pixel, black
+  (`0`) marks background. Anti-aliased edges are fine — the loader
+  thresholds at the midpoint.
+- Saved as `data/test/annotations/<stem>_mask.png`, e.g.
+  `data/test/annotations/modern_mask.png`. The directory doesn't exist
+  yet — create it when the first mask is added.
+- One mask per image is enough even when several causes are present in
+  the same painting (underdrawing *and* a pentimento, say) — the
+  detection metrics only need "hidden detail here: yes/no", not which
+  kind. If separating causes later becomes useful, per-cause masks can
+  be added as `<stem>_mask_<cause>.png` without changing the loader
+  (`033_bis` would need a small extension to combine or select them).
 
-```python
-mask = np.array(Image.open("data/test/annotations/modern_mask.png").convert("L"))
-mask = mask > 127  # binary bool array, shape (H, W)
-```
+## How a mask gets used
 
-## 3. Score candidate signals against it
+`033_bis_signal_evaluation_annotated.ipynb` loads the PNG, thresholds it
+to boolean, and passes it straight to `scripts.detection.rank_signals`
+alongside the same per-model signal maps `033` computes (raw delta,
+structural delta for deterministic architectures; raw delta and `|z|` for
+NLL architectures under both `gaussian_nll` and `beta_nll`). Images
+without a mask file are skipped for the detection ranking (with a
+message, not a failure) but still contribute to the unsupervised stroke-
+coherence axis, which needs no reference at all.
 
-For each signal already produced by the existing pipeline — raw delta,
-structural delta (`scripts.delta_analysis.analyze_delta`), learned
-z-score (`gaussian_nll` and `beta_nll`, via `_predict_mu_sigma` as used
-in `062_model_comparison_v2.ipynb`) — flatten signal and mask to 1D and
-compute:
+## Free tooling, if a JSON/polygon workflow is preferred instead
 
-```python
-from sklearn.metrics import roc_auc_score, average_precision_score
+A hand-drawn PNG was chosen over polygon annotation because freeform
+tracing is simpler for organic underdrawing shapes than placing
+coordinates. If a polygon-based workflow becomes preferable later (e.g.
+to keep per-region metadata), two free browser tools export to JSON
+without installation: [makesense.ai](https://www.makesense.ai/) and the
+[VGG Image Annotator](https://www.robots.ox.ac.uk/~vgg/software/via/).
+Converting a polygon export to a mask PNG is a small, separate script —
+not written, since the PNG workflow above is the current choice.
 
-auroc = roc_auc_score(mask.ravel(), signal.ravel())
-ap = average_precision_score(mask.ravel(), signal.ravel())
-```
+## Status
 
-- **AUROC**: how well the signal separates "hidden detail" pixels from
-  "normal" pixels, threshold-independent. Primary metric.
-- **Average precision (AUPRC)**: more informative than AUROC if the
-  annotated area is a small minority of the image (likely, if the mask
-  covers a few localized regions) — class imbalance inflates AUROC.
-- Repeat for every (signal × model/loss-variant) combination to get one
-  comparable table instead of only a visual/qualitative read.
-
-`scikit-learn` would need to be added as a dependency if not already
-present (check `requirements.txt`/`env/environment.yml` first).
-
-## 4. Where this would live
-
-A new lightweight notebook (or a new section in `062`) that: loads the
-mask, computes the signals already produced by existing code
-(`analyze_delta`, `_predict_mu_sigma`), scores each against the mask,
-prints a comparison table. No new modeling code — only the mask load +
-scoring step is new.
+Not yet done for any image — `data/test/annotations/` does not exist.
+`033_bis_signal_evaluation_annotated.ipynb` is written to run against
+zero, one, or several annotated images, so it becomes progressively more
+informative (and statistically meaningful — the rank correlation in its
+§6 needs more than one image to mean anything, same caveat as `033`'s
+"fail early" check for candidate signals) as masks are added, without
+needing changes to the notebook itself.

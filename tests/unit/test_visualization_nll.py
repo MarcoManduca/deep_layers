@@ -8,8 +8,11 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
+from scripts.calibration import evaluate_calibration  # noqa: E402
+from scripts.contrast import ZScale, ZScaleMode  # noqa: E402
 from scripts.delta_analysis import analyze_delta  # noqa: E402
 from scripts.visualization_nll import (  # noqa: E402
+    plot_calibration,
     plot_delta_comparison,
     plot_predictions_nll,
     plot_signal_comparison,
@@ -79,4 +82,39 @@ def test_plot_signal_comparison_respects_max_cols() -> None:
     # 3 panels (real IR + 2 models), all fit in a single row of 3 -> no
     # empty axes to turn off.
     assert len(fig.axes) == 6
+    plt.close(fig)
+
+
+def test_plot_zscore_reports_the_contrast_setting_in_the_panel_title() -> None:
+    sigma = np.full((32, 32, 1), 0.1, dtype=np.float32)
+    scale = ZScale(mode=ZScaleMode.PERCENTILE, percentile=99.0, gamma=0.5)
+
+    fig = plot_zscore(_ir(), _ir(), sigma, z_scale=scale)
+
+    assert "gamma=0.5" in fig.axes[2].get_title()
+    plt.close(fig)
+
+
+def test_plot_delta_comparison_accepts_a_custom_contrast() -> None:
+    ir_real, mu = _ir(), _ir()
+    sigma = np.full((32, 32, 1), 0.1, dtype=np.float32)
+    result = analyze_delta(ir_real.squeeze(), mu.squeeze(), window_size=11, zone_size=8)
+
+    fig = plot_delta_comparison(
+        result, ir_real, mu, sigma, z_scale=ZScale(mode=ZScaleMode.PERCENTILE)
+    )
+
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_plot_calibration_returns_figure_with_three_panels() -> None:
+    ir_real, mu = _ir(), _ir()
+    sigma = np.full((32, 32, 1), 0.1, dtype=np.float32)
+    result = evaluate_calibration(ir_real, mu, sigma, n_bins=4)
+
+    fig = plot_calibration(result, title="unet_nll")
+
+    assert isinstance(fig, Figure)
+    assert len(fig.axes) == 3
     plt.close(fig)
