@@ -104,6 +104,8 @@ deep_layers/
 │   └── visualization.py          # Plotting utilities
 ├── tests/
 │   └── unit/                     # Unit tests mirroring scripts/
+├── env/
+│   └── environment.yml           # Conda environment (option A in Setup)
 ├── pyproject.toml                # Ruff and pytest configuration
 ├── requirements.txt              # Python dependencies
 └── LICENSE                       # CC BY-SA 4.0
@@ -113,7 +115,28 @@ deep_layers/
 
 ## Setup
 
-**Requirements**: Python 3.11.5, pip.
+**Requirements**: Python 3.11.5. Either conda (option A, recommended) or pip (option B) — both install the same pinned versions.
+
+### Option A — conda
+
+`env/environment.yml` declares the interpreter and every dependency, so the environment is reproducible from one command:
+
+```bash
+# 1. Create the environment (named deep-layers)
+conda env create -f env/environment.yml
+
+# 2. Activate it — needed in every new shell
+conda activate deep-layers
+```
+
+To rebuild it from scratch after editing `env/environment.yml`:
+
+```bash
+conda env remove -n deep-layers
+conda env create -f env/environment.yml
+```
+
+### Option B — venv + pip
 
 ```bash
 # 1. Create and activate a virtual environment
@@ -124,7 +147,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On Apple Silicon, `tensorflow-metal` (included in `requirements.txt`) enables GPU acceleration via the Metal backend automatically — no additional configuration is needed.
+### Verify the installation
+
+```bash
+# TensorFlow, Keras, and (on Apple Silicon) the Metal GPU device
+python -c "import tensorflow as tf, keras; print(tf.__version__, keras.__version__, tf.config.list_physical_devices('GPU'))"
+
+# Full unit-test suite — no data or checkpoints required
+pytest -q
+```
+
+Expected: `2.16.2 3.15.1 [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]` and a green test run.
+
+On Apple Silicon, `tensorflow-metal` (included in both dependency files) enables GPU acceleration via the Metal backend automatically — no additional configuration is needed.
+
+**`keras` is pinned on purpose.** TensorFlow 2.16 requires `keras>=3` with no upper bound, so an unpinned install picks whatever is newest. The checkpoints under `models/` were saved by Keras 3.15; loading them under an earlier version fails with `GlorotUniform.__init__() got an unexpected keyword argument 'input_axes'`. Keep `keras==3.15.1` in step across `requirements.txt` and `env/environment.yml`, and retrain (or re-save) the checkpoints before moving to a newer Keras.
 
 ### Running the notebooks
 
