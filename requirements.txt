@@ -1,4 +1,8 @@
 tensorflow==2.16.2
+# TensorFlow 2.16 declares keras>=3 without an upper bound. Pinned because the
+# checkpoints under models/ were saved by keras 3.15 and earlier versions cannot
+# deserialize them (GlorotUniform gains input_axes/output_axes in 3.15).
+keras==3.15.1
 tensorflow-metal==1.2.0; sys_platform == "darwin" and platform_machine == "arm64"
 numpy==1.26.4
 scipy==1.13.1
