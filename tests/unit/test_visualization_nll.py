@@ -14,6 +14,7 @@ from scripts.visualization_nll import (  # noqa: E402
     plot_calibration,
     plot_predictions_nll,
     plot_signal_comparison,
+    plot_signal_gallery,
     plot_zscore,
 )
 
@@ -90,4 +91,47 @@ def test_plot_calibration_returns_figure_with_three_panels() -> None:
 
     assert isinstance(fig, Figure)
     assert len(fig.axes) == 3
+    plt.close(fig)
+
+
+def test_plot_signal_gallery_returns_figure_with_heterogeneous_signals() -> None:
+    ir_real = _ir()
+    signals = {
+        "raw delta": _ir(),
+        "structural delta": _ir(),
+        "|z|": _ir() * 20.0,  # a very different, unbounded-looking scale
+    }
+
+    fig = plot_signal_gallery(ir_real, signals, title="Signal evolution")
+
+    assert isinstance(fig, Figure)
+    # 4 panels (real IR + 3 signals) wrapped at 3 cols -> 6-slot 2x3 grid,
+    # each occupied slot has an image + colorbar (4 x 2 = 8), plus 2
+    # turned-off empty axes for the unused grid slots.
+    assert len(fig.axes) == 10
+    plt.close(fig)
+
+
+def test_plot_signal_gallery_scales_each_panel_independently() -> None:
+    ir_real = _ir()
+    small = np.full((32, 32), 0.1, dtype=np.float32)
+    large = np.full((32, 32), 50.0, dtype=np.float32)
+
+    fig = plot_signal_gallery(ir_real, {"small": small, "large": large})
+
+    # Panel order: real IR, small, large -> images at axes[0], axes[2], axes[4]
+    # (odd-indexed axes are colorbars).
+    images = [ax.images[0] for ax in fig.axes if ax.images]
+    small_img, large_img = images[1], images[2]
+    assert small_img.get_clim()[1] < large_img.get_clim()[1]
+    plt.close(fig)
+
+
+def test_plot_signal_gallery_handles_an_all_zero_signal() -> None:
+    ir_real = _ir()
+    zeros = np.zeros((32, 32), dtype=np.float32)
+
+    fig = plot_signal_gallery(ir_real, {"zeros": zeros})
+
+    assert isinstance(fig, Figure)
     plt.close(fig)

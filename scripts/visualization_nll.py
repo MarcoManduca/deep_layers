@@ -198,6 +198,71 @@ def plot_signal_comparison(
     return fig
 
 
+def plot_signal_gallery(
+    ir_real: np.ndarray,
+    signals: dict[str, np.ndarray],
+    title: str = "",
+    max_cols: int = 3,
+    percentile: float = 99.0,
+) -> plt.Figure:
+    """Compare several *different* signal types side by side, each on its own scale.
+
+    ``plot_signal_comparison`` is built for comparing the *same* signal type
+    across models on one shared scale, so brightness is genuinely
+    comparable — correct for that job, wrong for this one: a "before/after"
+    panel mixing a bounded delta (``[0, ~1]``) with an unbounded z-score
+    (single-pixel outliers into the tens) on one shared scale would flatten
+    the delta panels to near-black. Each panel here is scaled independently
+    to its own ``[0, percentile]`` range instead, so every panel stays
+    readable, at the cost of losing cross-panel brightness comparability —
+    read each panel's own bracketed limit in its title, not its brightness
+    relative to its neighbours.
+
+    Parameters
+    ----------
+    ir_real : np.ndarray
+        Ground-truth IR of shape ``(H, W)`` or ``(H, W, 1)``.
+    signals : dict[str, np.ndarray]
+        Maps a panel label to its 2D signal map (same shape as ``ir_real``).
+    title : str
+        Figure title.
+    max_cols : int
+        Maximum panels per row before wrapping to a new row.
+    percentile : float
+        Upper percentile of ``|signal|`` used as each panel's own display
+        limit, so a handful of outlier pixels don't flatten the rest.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    real = ir_real.squeeze()
+    arrays = {name: data.squeeze() for name, data in signals.items()}
+
+    panels = [("Real IR", real, (0.0, 1.0))]
+    for name, data in arrays.items():
+        vmax = float(np.percentile(np.abs(data), percentile))
+        if vmax <= 1e-8:
+            vmax = float(np.abs(data).max()) + 1e-8
+        panels.append((name, data, (0.0, vmax)))
+
+    n = len(panels)
+    n_cols = min(max_cols, n)
+    n_rows = math.ceil(n / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4.5 * n_rows))
+    fig.suptitle(title)
+    axes_flat = np.atleast_1d(axes).flatten()
+    for ax, (panel_title, data, (pmin, pmax)) in zip(axes_flat, panels):
+        im = ax.imshow(data, cmap="gray", vmin=pmin, vmax=pmax)
+        ax.set_title(f"{panel_title}\n[0, {pmax:.2f}]", fontsize=9)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    plt.tight_layout()
+    return fig
+
+
 def plot_calibration(
     result: CalibrationResult,
     title: str = "Sigma calibration",
