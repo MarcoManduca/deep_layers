@@ -40,6 +40,12 @@ class Settings(BaseSettings):
         Used by ``dataset.mockup_aware_train_val_test_split`` to keep almost
         all of their sections in train/val instead of holding entire groups
         out for test.
+    MOCKUP_TEST_RATIO : float
+        Fraction of mockup *pairs* (not groups) sent to test by
+        ``dataset.mockup_aware_train_val_test_split`` — the mockup-side
+        counterpart of ``TRAIN_RATIO``/``VAL_RATIO``. The remaining pairs
+        split into train/val using the same relative proportion as
+        ``TRAIN_RATIO``/``VAL_RATIO`` do for real artworks.
     LOSS_ALPHA : float
         Weight of the MAE term in the combined MAE + (1 - SSIM) loss.
     ADV_LOSS_ALPHA : float
@@ -86,6 +92,7 @@ class Settings(BaseSettings):
         "trosso",
         "tverde",
     ]
+    MOCKUP_TEST_RATIO: float = 0.05
 
     LOSS_ALPHA: float = 0.7
 
