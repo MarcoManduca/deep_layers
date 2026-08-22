@@ -1,8 +1,8 @@
 """Unsupervised stroke-likeness of a signal map — no reference mask needed.
 
-The second axis of model evaluation, independent of any ground truth including
-the pseudo mask in ``scripts.pseudo_mask``. It rests on a property of the
-target rather than on its location: an underdrawing is made of **strokes** —
+The second axis of model evaluation, independent of any ground truth. It rests
+on a property of the target rather than on its location: an underdrawing is
+made of **strokes** —
 elongated, oriented, spatially coherent — while prediction noise is isotropic
 and high-frequency. Those are two statistically separable populations even
 without knowing where the strokes are.

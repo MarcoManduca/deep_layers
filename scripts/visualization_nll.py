@@ -127,93 +127,6 @@ def plot_zscore(
     return fig
 
 
-def plot_delta_comparison(
-    result: object,
-    ir_real: np.ndarray,
-    mu: np.ndarray,
-    sigma: np.ndarray,
-    title: str = "Delta comparison",
-    z_scale: ZScale | None = None,
-) -> plt.Figure:
-    """Compare, side by side, every way this pipeline highlights hidden detail.
-
-    A single figure (3x2 grid) with the ground-truth IR plus every "is
-    this pixel a genuine hidden mark?" signal produced across the
-    pipeline, so they can be read at a glance instead of scattered
-    across notebook sections:
-
-    - **real IR** — ground-truth reference the other panels are computed
-      against;
-    - **raw delta** ``|real - mu|`` — the original baseline; conflates
-      genuine hidden detail with substrate/acquisition gray-level shifts;
-    - **structural delta** (``1 - local SSIM structure``) — insensitive to
-      gray-level shifts, sensitive to genuine structural change
-      (``scripts.delta_analysis``, ``note.md`` §1);
-    - **fixed-window normalized delta** — per-window z-score delta,
-      spatial-only normalization (``scripts.delta_analysis``,
-      ``note.md`` §2);
-    - **learned z-score** ``(real - mu) / sigma`` — color/context-
-      conditioned normalization learned by the heteroscedastic model
-      (``code-review.md`` §7.6, ``note.md`` "Update" section);
-    - **confidence map** — agreement between the raw and structural delta.
-
-    See ``note.md``'s "fixed-window vs. learned normalization" section for
-    what each of these actually normalizes against and where each has a
-    blind spot the others cover.
-
-    Parameters
-    ----------
-    result : scripts.delta_analysis.DeltaAnalysisResult
-        Output of ``scripts.delta_analysis.analyze_delta(ir_real, mu, ...)``.
-    ir_real : np.ndarray
-        Ground-truth IR of shape ``(H, W)`` or ``(H, W, 1)``.
-    mu : np.ndarray
-        Predicted mean IR of shape ``(H, W)`` or ``(H, W, 1)``.
-    sigma : np.ndarray
-        Predicted standard deviation of shape ``(H, W)`` or ``(H, W, 1)``.
-    title : str
-        Figure title.
-    z_scale : ZScale or None
-        Contrast settings for the learned z-score panel
-        (``scripts.contrast.ZScale``). Defaults to ``DEFAULT_Z_SCALE``
-        (percentile ``p99.5``, no gamma — see module docstring).
-
-    Returns
-    -------
-    plt.Figure
-    """
-    real = ir_real.squeeze()
-    mu_sq = mu.squeeze()
-    raw_delta = np.abs(real - mu_sq)
-    scaled = (z_scale or DEFAULT_Z_SCALE).apply(learned_zscore(ir_real, mu, sigma))
-
-    panels = (
-        ("Real IR", real, None),
-        ("Raw delta\n|real - mu|", raw_delta, None),
-        ("Structural delta\n(1 - structure)", result.structural_delta, (0, 1)),
-        ("Fixed-window\nnormalized delta", result.normalized_delta, None),
-        (
-            f"Learned z-score\n(real - mu) / sigma — {scaled.label}",
-            scaled.values,
-            (scaled.vmin, scaled.vmax),
-        ),
-        ("Confidence\n(raw vs structural agreement)", result.confidence_map, (0, 1)),
-    )
-
-    n_cols = 3
-    n_rows = 2
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4.5 * n_rows))
-    fig.suptitle(title)
-    for ax, (panel_title, data, vrange) in zip(axes.flat, panels):
-        vmin, vmax = vrange if vrange is not None else (None, None)
-        im = ax.imshow(data, cmap="gray", vmin=vmin, vmax=vmax)
-        ax.set_title(panel_title, fontsize=10)
-        ax.axis("off")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    plt.tight_layout()
-    return fig
-
-
 def plot_signal_comparison(
     ir_real: np.ndarray,
     signals: dict[str, np.ndarray],
@@ -223,10 +136,9 @@ def plot_signal_comparison(
 ) -> plt.Figure:
     """Compare one delta signal (raw, structural, ...) across several models.
 
-    The counterpart of ``plot_delta_comparison``: that one fixes the model
-    and compares signal *types* side by side; this one fixes the signal
-    type and compares *models* side by side, e.g. "raw delta for
-    unet_nll vs. resunet_nll vs. attention_unet_nll vs. efficientnet_unet_nll".
+    Fixes the signal type and compares *models* side by side, e.g. "raw
+    delta for unet_nll vs. resunet_nll vs. attention_unet_nll vs.
+    efficientnet_unet_nll".
 
     Always shows the ground-truth real IR as the first panel so every
     model's signal can be read against the actual target, then one panel
@@ -278,71 +190,6 @@ def plot_signal_comparison(
     for ax, (panel_title, data, (pmin, pmax)) in zip(axes_flat, panels):
         im = ax.imshow(data, cmap="gray", vmin=pmin, vmax=pmax)
         ax.set_title(panel_title, fontsize=10)
-        ax.axis("off")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    for ax in axes_flat[n:]:
-        ax.axis("off")
-    plt.tight_layout()
-    return fig
-
-
-def plot_signal_gallery(
-    ir_real: np.ndarray,
-    signals: dict[str, np.ndarray],
-    title: str = "",
-    max_cols: int = 3,
-    percentile: float = 99.0,
-) -> plt.Figure:
-    """Compare several *different* signal types side by side, each on its own scale.
-
-    ``plot_signal_comparison`` is built for comparing the *same* signal type
-    across models on one shared scale, so brightness is genuinely
-    comparable — correct for that job, wrong for this one: a "before/after"
-    panel mixing a bounded delta (``[0, ~1]``) with an unbounded z-score
-    (single-pixel outliers into the tens) on one shared scale would flatten
-    the delta panels to near-black. Each panel here is scaled independently
-    to its own ``[0, percentile]`` range instead, so every panel stays
-    readable, at the cost of losing cross-panel brightness comparability —
-    read each panel's own bracketed limit in its title, not its brightness
-    relative to its neighbours.
-
-    Parameters
-    ----------
-    ir_real : np.ndarray
-        Ground-truth IR of shape ``(H, W)`` or ``(H, W, 1)``.
-    signals : dict[str, np.ndarray]
-        Maps a panel label to its 2D signal map (same shape as ``ir_real``).
-    title : str
-        Figure title.
-    max_cols : int
-        Maximum panels per row before wrapping to a new row.
-    percentile : float
-        Upper percentile of ``|signal|`` used as each panel's own display
-        limit, so a handful of outlier pixels don't flatten the rest.
-
-    Returns
-    -------
-    plt.Figure
-    """
-    real = ir_real.squeeze()
-    arrays = {name: data.squeeze() for name, data in signals.items()}
-
-    panels = [("Real IR", real, (0.0, 1.0))]
-    for name, data in arrays.items():
-        vmax = float(np.percentile(np.abs(data), percentile))
-        if vmax <= 1e-8:
-            vmax = float(np.abs(data).max()) + 1e-8
-        panels.append((name, data, (0.0, vmax)))
-
-    n = len(panels)
-    n_cols = min(max_cols, n)
-    n_rows = math.ceil(n / n_cols)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4.5 * n_rows))
-    fig.suptitle(title)
-    axes_flat = np.atleast_1d(axes).flatten()
-    for ax, (panel_title, data, (pmin, pmax)) in zip(axes_flat, panels):
-        im = ax.imshow(data, cmap="gray", vmin=pmin, vmax=pmax)
-        ax.set_title(f"{panel_title}\n[0, {pmax:.2f}]", fontsize=9)
         ax.axis("off")
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     for ax in axes_flat[n:]:

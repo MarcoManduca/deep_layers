@@ -5,9 +5,9 @@ a ``(mu, log_var)`` prediction, so by construction they cannot say whether the
 predicted ``sigma`` — and therefore the learned z-score
 ``(real_IR - mu) / sigma`` the reflectography signal is built on — is any good.
 This module scores ``sigma`` on its own, post hoc, from arrays already produced
-by ``scripts.inference_utils_nll``: no retraining, no change to any model, so
-existing checkpoints can be compared immediately. See ``note.md`` ("evaluating
-the learned z-score itself") and ``code-review.md`` §7.6.
+by ``model.predict``: no retraining, no change to any model, so existing
+checkpoints can be compared immediately. See ``note.md`` ("evaluating the
+learned z-score itself") and ``code-review.md`` §7.6.
 
 Two properties must be read together (Gneiting et al. 2007): a model is only
 useful if it is *calibrated* **and** *sharp*.
@@ -476,11 +476,10 @@ def evaluate_calibration(
 
     The counterpart of ``scripts.delta_analysis.analyze_delta``: that one turns
     a prediction into maps for the eye, this one turns it into numbers for a
-    table. Run it on ``mu``/``sigma`` from
-    ``scripts.inference_utils_nll.predict_with_overlap_nll`` (or a direct
-    ``model.predict``) to compare NLL variants — ``gaussian_nll`` vs.
-    ``beta_nll``, or different ``beta`` — on the uncertainty signal itself
-    rather than through ``mu`` alone.
+    table. Run it on ``mu``/``sigma`` from a direct ``model.predict`` to
+    compare NLL variants — ``gaussian_nll`` vs. ``beta_nll``, or different
+    ``beta`` — on the uncertainty signal itself rather than through ``mu``
+    alone.
 
     Parameters
     ----------

@@ -1,9 +1,8 @@
 """Regional analysis of the IR delta, decomposing it into substrate/acquisition
 effects (luminance, contrast) versus genuine structural discontinuities.
 
-Downstream of ``predict_with_overlap`` (``scripts/inference_utils.py``): takes
-the real and predicted IR images and produces complementary maps that help
-separate a gray-level shift (substrate, illumination, exposure) from an
+Takes the real and predicted IR images and produces complementary maps that
+help separate a gray-level shift (substrate, illumination, exposure) from an
 actual hidden mark (underdrawing, pentimento, reused support). See
 ``note.md`` for the design rationale.
 """
@@ -11,7 +10,6 @@ actual hidden mark (underdrawing, pentimento, reused support). See
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import wasserstein_distance
 
 _EPS = 1e-8
 
@@ -170,80 +168,6 @@ def compute_ssim_components(
     return SSIMComponents(luminance, contrast, structure)
 
 
-def local_zscore_delta(
-    stats: LocalStats, real: np.ndarray, pred: np.ndarray
-) -> np.ndarray:
-    """Compute the absolute delta between per-window z-score normalized images.
-
-    A zone with the same pattern but a different local mean/scale (e.g. a
-    darker substrate) has a normalized delta close to zero; a zone whose
-    normalized shape differs is flagged regardless of its absolute gray
-    level.
-
-    Parameters
-    ----------
-    stats : LocalStats
-        Local statistics from ``compute_local_stats`` (same window used for
-        the z-score as for the SSIM decomposition).
-    real : np.ndarray
-        Ground-truth IR image, shape ``(H, W)``.
-    pred : np.ndarray
-        Predicted IR image, shape ``(H, W)``.
-
-    Returns
-    -------
-    np.ndarray
-        Normalized delta map, shape ``(H, W)``.
-    """
-    std_real = np.sqrt(np.maximum(stats.var_real, 0.0))
-    std_pred = np.sqrt(np.maximum(stats.var_pred, 0.0))
-    z_real = (real - stats.mu_real) / (std_real + _EPS)
-    z_pred = (pred - stats.mu_pred) / (std_pred + _EPS)
-    return np.abs(z_real - z_pred)
-
-
-def zone_wasserstein_map(
-    real: np.ndarray,
-    pred: np.ndarray,
-    zone_size: int = 32,
-) -> np.ndarray:
-    """Compare per-zone pixel distributions with the Wasserstein distance.
-
-    Splits the image into non-overlapping ``zone_size x zone_size`` tiles
-    (the last row/column of tiles may be smaller if dimensions don't divide
-    evenly) and computes the 1D Wasserstein distance between the ``real``
-    and ``pred`` pixel-value distributions within each tile. A tile with a
-    shifted-but-shape-compatible distribution is more likely an acquisition
-    artifact; a large distance indicates the distribution shape itself
-    changed — more indicative of a genuine mark.
-
-    Parameters
-    ----------
-    real : np.ndarray
-        Ground-truth IR image, shape ``(H, W)``.
-    pred : np.ndarray
-        Predicted IR image, shape ``(H, W)``.
-    zone_size : int
-        Side length of each square zone in pixels.
-
-    Returns
-    -------
-    np.ndarray
-        Per-pixel map, shape ``(H, W)``, where every pixel in a zone holds
-        that zone's Wasserstein distance (broadcast for direct overlay with
-        the other full-resolution maps).
-    """
-    h, w = real.shape
-    out = np.zeros((h, w), dtype=np.float32)
-    for y in range(0, h, zone_size):
-        for x in range(0, w, zone_size):
-            real_zone = real[y : y + zone_size, x : x + zone_size].ravel()
-            pred_zone = pred[y : y + zone_size, x : x + zone_size].ravel()
-            distance = wasserstein_distance(real_zone, pred_zone)
-            out[y : y + zone_size, x : x + zone_size] = distance
-    return out
-
-
 def _min_max_normalize(x: np.ndarray) -> np.ndarray:
     lo, hi = x.min(), x.max()
     return (x - lo) / (hi - lo + _EPS)
@@ -261,10 +185,6 @@ class DeltaAnalysisResult:
         Local SSIM components (see ``compute_ssim_components``).
     structural_delta : np.ndarray
         ``1 - structure_map``; the "hidden detail" indicator.
-    normalized_delta : np.ndarray
-        Delta between per-window z-score normalized images.
-    zone_distribution_map : np.ndarray
-        Per-zone Wasserstein distance, broadcast to full resolution.
     confidence_map : np.ndarray
         Agreement between ``raw_delta`` and ``structural_delta`` after
         min-max normalization: high where both techniques agree the region
@@ -276,8 +196,6 @@ class DeltaAnalysisResult:
     contrast_map: np.ndarray
     structure_map: np.ndarray
     structural_delta: np.ndarray
-    normalized_delta: np.ndarray
-    zone_distribution_map: np.ndarray
     confidence_map: np.ndarray
 
 
@@ -286,12 +204,10 @@ def analyze_delta(
     pred_ir: np.ndarray,
     window_size: int = 11,
     sigma: float = 1.5,
-    zone_size: int = 32,
 ) -> DeltaAnalysisResult:
     """Produce complementary regional analysis maps for an IR image pair.
 
-    Combines a local luminance/contrast/structure decomposition, per-window
-    z-score normalization and per-zone distribution comparison to separate
+    Decomposes local SSIM into luminance/contrast/structure to separate
     genuine hidden-detail signal from substrate/acquisition-driven
     gray-level shifts. See ``note.md`` for the full rationale.
 
@@ -303,13 +219,9 @@ def analyze_delta(
     pred_ir : np.ndarray
         Predicted IR image, same shape convention as ``real_ir``.
     window_size : int
-        Side length of the Gaussian window used for the SSIM decomposition
-        and the z-score normalization.
+        Side length of the Gaussian window used for the SSIM decomposition.
     sigma : float
         Standard deviation of the Gaussian window.
-    zone_size : int
-        Side length of the (larger, non-overlapping) zones used for the
-        distribution comparison.
 
     Returns
     -------
@@ -323,8 +235,6 @@ def analyze_delta(
     stats = compute_local_stats(real, pred, window_size=window_size, sigma=sigma)
     components = compute_ssim_components(stats)
     structural_delta = 1.0 - components.structure
-    normalized_delta = local_zscore_delta(stats, real, pred)
-    zone_map = zone_wasserstein_map(real, pred, zone_size=zone_size)
 
     raw_norm = _min_max_normalize(raw_delta)
     structural_norm = _min_max_normalize(structural_delta)
@@ -336,7 +246,5 @@ def analyze_delta(
         contrast_map=components.contrast,
         structure_map=components.structure,
         structural_delta=structural_delta,
-        normalized_delta=normalized_delta,
-        zone_distribution_map=zone_map,
         confidence_map=confidence_map,
     )

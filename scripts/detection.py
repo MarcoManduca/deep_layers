@@ -1,13 +1,13 @@
 """Detection scores for a candidate hidden-detail signal against a reference mask.
 
 Turns "this delta map looks better" into a number. Every signal the pipeline
-produces — raw delta, structural delta, fixed-window normalized delta, learned
-z-score, per architecture and per loss variant — is a per-pixel ranking of "how
-likely is this pixel to hold hidden detail", which is exactly what a detection
+produces — raw delta, structural delta, learned z-score, structural z-score,
+per architecture and per loss variant — is a per-pixel ranking of "how likely
+is this pixel to hold hidden detail", which is exactly what a detection
 metric scores.
 
-Pair with ``scripts.pseudo_mask`` for a reference derived from the data itself,
-or with a hand-annotated mask when one exists. The metrics are indifferent to
+Pair with a hand-annotated ground-truth mask
+(``data/test/annotations/<stem>_Map.png``). The metrics are indifferent to
 where the mask came from.
 
 ``roc_auc`` answers "does this signal rank detail above non-detail?" and is

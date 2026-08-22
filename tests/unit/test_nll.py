@@ -1,7 +1,6 @@
 """Unit tests for the heteroscedastic (mu, log-variance) NLL pipeline:
 scripts.attention_unet_nll, scripts.losses.gaussian_nll_loss,
-scripts.metrics.Mu*Metric, scripts.trainer_nll, and
-scripts.inference_utils_nll.
+scripts.metrics.Mu*Metric, and scripts.trainer_nll.
 """
 
 from pathlib import Path
@@ -11,7 +10,6 @@ import pytest
 import tensorflow as tf
 
 from scripts.attention_unet_nll import build_attention_unet_nll
-from scripts.inference_utils_nll import predict_with_overlap_nll
 from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
 from scripts.resunet_nll import build_resunet_nll
@@ -395,37 +393,3 @@ def test_compile_model_nll_raises_on_unknown_loss_name(
 ) -> None:
     with pytest.raises(ValueError, match="Unknown NLL loss"):
         compile_model_nll(dummy_model_nll, loss_name="does_not_exist")
-
-
-# ---------------------------------------------------------------------------
-# scripts.inference_utils_nll
-# ---------------------------------------------------------------------------
-
-
-def test_predict_with_overlap_nll_rejects_patch_size_not_multiple_of_16(
-    dummy_model_nll: tf.keras.Model,
-) -> None:
-    image = np.random.rand(48, 48, 3).astype("float32")
-    with pytest.raises(ValueError, match="multiple of 16"):
-        predict_with_overlap_nll(dummy_model_nll, image, patch_size=30)
-
-
-def test_predict_with_overlap_nll_rejects_stride_larger_than_patch(
-    dummy_model_nll: tf.keras.Model,
-) -> None:
-    image = np.random.rand(48, 48, 3).astype("float32")
-    with pytest.raises(ValueError, match="must be ≤ patch_size"):
-        predict_with_overlap_nll(dummy_model_nll, image, patch_size=16, stride=32)
-
-
-def test_predict_with_overlap_nll_returns_two_channels_at_input_resolution(
-    dummy_model_nll: tf.keras.Model,
-) -> None:
-    # Arrange
-    image = np.random.rand(40, 50, 3).astype("float32")
-
-    # Act
-    pred = predict_with_overlap_nll(dummy_model_nll, image, patch_size=16, stride=8)
-
-    # Assert
-    assert pred.shape == (40, 50, 2)
