@@ -39,3 +39,6 @@ tempCodeRunnerFile.py
 # Claude Code local config, skills and handoff files
 .claude/
 skills-lock.json
+
+# Bibliography
+biblio/
