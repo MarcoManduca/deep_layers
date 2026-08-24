@@ -10,15 +10,15 @@ variant:
   ``UpSampling2D`` (bilinear) + ``Conv2D`` for decoder upsampling, to avoid
   the checkerboard artifacts transposed convolution is prone to.
 - ``dropout_rate``: adds ``SpatialDropout2D`` at the bottleneck and the
-  first (deepest) decoder block only — not at every block. Applying it
-  throughout would compound with the ``BatchNormalization`` used in every
-  conv block: dropout noise present in training but absent at inference
-  shifts the statistics BN relies on (Li et al., 2019,
-  "Understanding the Disharmony between Dropout and Batch Normalization").
-  Restricting it to the two deepest blocks keeps the regularization where
-  overfitting risk is most concentrated (bottleneck) while leaving the
-  shallow encoder levels — where fine underdrawing-relevant detail lives —
-  untouched.
+  first (deepest) decoder block only — not at every block. Restricting it
+  to the two deepest blocks keeps the regularization where overfitting
+  risk is most concentrated (bottleneck) while leaving the shallow encoder
+  levels — where fine underdrawing-relevant detail lives — untouched.
+
+Every conv block uses ``GroupNormalization`` rather than
+``BatchNormalization``: at ``settings.BATCH_SIZE == 8``, GroupNorm's
+per-example statistics avoid the batch-size sensitivity BatchNorm has at
+this scale (see ``fixing.md`` #1).
 
 All three default to off/``0.0``, so ``build_unet_v2()`` with no arguments
 is architecturally identical to :func:`scripts.unet.build_unet`.
@@ -26,6 +26,19 @@ is architecturally identical to :func:`scripts.unet.build_unet`.
 
 import tensorflow as tf
 from tensorflow.keras import layers
+
+
+def _num_groups(filters: int, max_groups: int = 32) -> int:
+    """Largest divisor of ``filters`` that is at most ``max_groups``.
+
+    ``GroupNormalization`` requires ``groups`` to divide the channel count
+    evenly; a fixed ``32`` (the paper's default) fails on the small filter
+    counts unit tests use, so the group count adapts down.
+    """
+    groups = min(max_groups, filters)
+    while filters % groups != 0:
+        groups -= 1
+    return groups
 
 
 @tf.keras.utils.register_keras_serializable(package="deep_layers")
@@ -50,7 +63,7 @@ class _Upsample2x(layers.Layer):
 
 
 def _conv_block(x: tf.Tensor, filters: int, dropout_rate: float = 0.0) -> tf.Tensor:
-    """Two consecutive Conv → BN → ReLU operations, with optional dropout.
+    """Two consecutive Conv → GroupNorm → ReLU operations, with optional dropout.
 
     Parameters
     ----------
@@ -67,10 +80,10 @@ def _conv_block(x: tf.Tensor, filters: int, dropout_rate: float = 0.0) -> tf.Ten
         Output feature map with shape ``(..., H, W, filters)``.
     """
     x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
     x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
     if dropout_rate > 0.0:
         x = layers.SpatialDropout2D(dropout_rate)(x)
@@ -81,7 +94,7 @@ def _downsample(x: tf.Tensor, filters: int, use_strided_conv: bool) -> tf.Tensor
     """Halve H/W via a learned stride-2 conv or plain max pooling."""
     if use_strided_conv:
         x = layers.Conv2D(filters, 3, strides=2, padding="same", use_bias=False)(x)
-        x = layers.BatchNormalization()(x)
+        x = layers.GroupNormalization(groups=_num_groups(filters))(x)
         x = layers.ReLU()(x)
         return x
     return layers.MaxPool2D(2)(x)
@@ -92,7 +105,7 @@ def _upsample(x: tf.Tensor, filters: int, use_upsample_conv: bool) -> tf.Tensor:
     if use_upsample_conv:
         x = _Upsample2x()(x)
         x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-        x = layers.BatchNormalization()(x)
+        x = layers.GroupNormalization(groups=_num_groups(filters))(x)
         x = layers.ReLU()(x)
         return x
     return layers.Conv2DTranspose(filters, 2, strides=2, padding="same")(x)
