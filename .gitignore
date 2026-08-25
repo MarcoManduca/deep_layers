@@ -6,6 +6,7 @@ logs/
 models/**/*.keras
 models/**/*.h5
 models/**/*.weights.h5
+models/**/*.json
 
 # Python
 __pycache__/
