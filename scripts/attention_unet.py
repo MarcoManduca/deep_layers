@@ -3,9 +3,14 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from scripts.norm_utils import num_groups as _num_groups
+
 
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
-    """Two consecutive Conv → BN → ReLU operations.
+    """Two consecutive Conv → GroupNorm → ReLU operations.
+
+    Uses ``GroupNormalization`` instead of ``BatchNormalization``
+    (``fixing.md`` #1) and He init instead of Xavier (``fixing.md`` #3).
 
     Parameters
     ----------
@@ -19,11 +24,15 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     tf.Tensor
         Output feature map with shape ``(..., H, W, filters)``.
     """
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
     return x
 

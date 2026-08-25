@@ -47,7 +47,41 @@ class Settings(BaseSettings):
         split into train/val using the same relative proportion as
         ``TRAIN_RATIO``/``VAL_RATIO`` do for real artworks.
     LOSS_ALPHA : float
-        Weight of the MAE term in the combined MAE + (1 - SSIM) loss.
+        Weight of the Charbonnier term in the combined Charbonnier +
+        (1 - MS-SSIM) loss (``scripts.losses.combined_loss``).
+    CHARBONNIER_EPS : float
+        Smoothing constant for the Charbonnier term, see
+        ``scripts.losses.charbonnier_loss``.
+    WEIGHT_DECAY : float
+        L2 weight decay passed to ``Adam(weight_decay=...)`` during
+        training (``fixing.md`` #2).
+    NLL_BETA : float
+        Weighting exponent for the beta-weighted NLL losses
+        (``scripts.losses.beta_gaussian_nll_loss``,
+        ``scripts.losses.laplace_nll_loss``).
+    EARLY_STOPPING_PATIENCE : int
+        Epochs with no ``val_loss`` improvement before training stops.
+    EARLY_STOPPING_MIN_DELTA : float
+        Minimum ``val_loss`` change to count as an improvement for
+        early stopping.
+    EARLY_STOPPING_RESTORE_BEST_WEIGHTS : bool
+        Whether to restore the best-epoch weights in memory when training
+        stops. Safe to leave ``False`` as long as evaluation always
+        reloads the checkpoint ``ModelCheckpoint`` saved to disk rather
+        than reusing the in-memory model right after ``fit()``.
+    REDUCE_LR_FACTOR : float
+        Multiplicative factor applied to the learning rate on plateau.
+    REDUCE_LR_PATIENCE : int
+        Epochs with no ``val_loss`` improvement before reducing the
+        learning rate.
+    REDUCE_LR_COOLDOWN : int
+        Epochs to wait after a learning-rate reduction before resuming
+        plateau monitoring, avoiding rapid repeated reductions.
+    REDUCE_LR_MIN_DELTA : float
+        Minimum ``val_loss`` change to count as an improvement for the
+        learning-rate scheduler.
+    REDUCE_LR_MIN_LR : float
+        Lower bound the learning rate is never reduced below.
     ADV_LOSS_ALPHA : float
         Weight of the MAE term in ``combined_loss_advanced``.
     ADV_LOSS_BETA : float
@@ -62,10 +96,16 @@ class Settings(BaseSettings):
         ``None`` disables cropping. Applied only to the augmented (training)
         split — never at evaluation or inference.
     NLL_LOG_VAR_MIN : float
-        Lower clip bound for the predicted ``log_var`` channel in
-        heteroscedastic (mu, log-variance) models, for numerical stability.
+        Lower clip bound for the second output channel of every
+        heteroscedastic model, for numerical stability. Reused as-is for
+        two different distributional interpretations of that channel:
+        Gaussian log-variance (``efficientnet_unet_nll``, until Round 2)
+        and Laplace log-scale (``unet_nll``/``resunet_nll``/
+        ``attention_unet_nll``, ``scripts.losses.laplace_nll_loss``) — the
+        ``[-6, 6]`` range is a reasonable clip bound for either, so the
+        field is shared rather than duplicated per distribution.
     NLL_LOG_VAR_MAX : float
-        Upper clip bound for the predicted ``log_var`` channel.
+        Upper clip bound, see above.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -94,7 +134,19 @@ class Settings(BaseSettings):
     ]
     MOCKUP_TEST_RATIO: float = 0.05
 
-    LOSS_ALPHA: float = 0.7
+    LOSS_ALPHA: float = 0.16
+    CHARBONNIER_EPS: float = 1e-3
+    WEIGHT_DECAY: float = 1e-5
+    NLL_BETA: float = 0.5
+
+    EARLY_STOPPING_PATIENCE: int = 20
+    EARLY_STOPPING_MIN_DELTA: float = 0.0
+    EARLY_STOPPING_RESTORE_BEST_WEIGHTS: bool = False
+    REDUCE_LR_FACTOR: float = 0.25
+    REDUCE_LR_PATIENCE: int = 6
+    REDUCE_LR_COOLDOWN: int = 2
+    REDUCE_LR_MIN_DELTA: float = 1e-4
+    REDUCE_LR_MIN_LR: float = 1e-6
 
     ADV_LOSS_ALPHA: float = 0.5
     ADV_LOSS_BETA: float = 0.3

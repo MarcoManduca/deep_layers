@@ -3,18 +3,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 
-
-def _num_groups(filters: int, max_groups: int = 32) -> int:
-    """Largest divisor of ``filters`` that is at most ``max_groups``.
-
-    ``GroupNormalization`` requires ``groups`` to divide the channel count
-    evenly; a fixed ``32`` (the paper's default) fails on the small filter
-    counts unit tests use, so the group count adapts down.
-    """
-    groups = min(max_groups, filters)
-    while filters % groups != 0:
-        groups -= 1
-    return groups
+from scripts.norm_utils import num_groups as _num_groups
 
 
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
@@ -25,6 +14,9 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     per-batch statistics are usually computed over), GroupNorm's
     per-example, per-channel-group statistics avoid the batch-size
     sensitivity BatchNorm has at this scale (see ``fixing.md`` #1).
+    ``kernel_initializer="he_normal"`` replaces the Keras-default Xavier
+    init, which assumes a ``tanh``-like activation rather than the ReLU
+    used here (``fixing.md`` #3).
 
     Parameters
     ----------
@@ -38,10 +30,14 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     tf.Tensor
         Output feature map with shape ``(..., H, W, filters)``.
     """
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
     return x

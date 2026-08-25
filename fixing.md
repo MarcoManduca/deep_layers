@@ -1,6 +1,16 @@
 # Fixing Plan — Deep Layers
 
-Scope: action plan for the ranked findings surfaced by `theory-links.md` §8.4-8.10 (course-lecture-to-code review), plus two loss-function findings (#9, #10) surfaced afterward from a direct question about loss correctness, a paper in `biblio/`, and a colleague's review. Each finding is restated with its priority, the type of change it requires, which checkpoints it forces a retrain of, and the reasoning behind the sequencing chosen to minimize the number of full retrain passes. Written before any code change — this is a plan document, not a changelog.
+Scope: action plan for the ranked findings surfaced by `theory-links.md` §8.4-8.10 (course-lecture-to-code review), plus two loss-function findings (#9, #10) surfaced afterward from a direct question about loss correctness, a paper in `biblio/`, and a colleague's review. Each finding is restated with its priority, the type of change it requires, which checkpoints it forces a retrain of, and the reasoning behind the sequencing chosen to minimize the number of full retrain passes.
+
+---
+
+## 0. Implementation status
+
+- **Round 0 (pilot)** — executed on branch `project-fixing`, `notebooks/P0_groupnorm_pilot.ipynb`. Result: `unet` improved on every metric with GroupNorm (loss 0.2127→0.1964, ssim 0.549→0.585, psnr 18.64→19.35); `unet_v2` regressed marginally (loss 0.1944→0.1966, ssim 0.592→0.586) — no catastrophic instability in either case, so Round 1 proceeded as planned. Baseline (BatchNorm) checkpoints backed up in `models/pf1/` before any Round 1 change.
+- **Round 1 — code and notebooks implemented, not yet retrained.** Every change below (#1, #2, #3, #5, #9, #10, §5 callbacks) is live in `scripts/` and `notebooks/020`–`023`/`030`–`032`/`041`/`042`/`051`–`053`; 235/235 unit tests pass. **No model has been retrained under the new recipe yet** — running `020_training.ipynb`, `021_training_nll.ipynb`, and `023_training_variants.ipynb` (in any order) is the next step before anything downstream (evaluation/signal notebooks) produces meaningful numbers again.
+  - Finding #5 turned out not to change model behavior as originally conceived: verified that every `resunet`/`resunet_nll` block always changes channel count (one block per depth level, widening on the way down), so a conditional identity shortcut never fires — kept as unconditional projection, documented in the code. Fixing this for real would need a structural change (a second, same-width block per level) outside this finding's scope.
+  - `efficientnet_unet`/`efficientnet_unet_nll` are untouched by Round 1 — they keep the pre-Round-1 recipe (`combined_loss_advanced`, both `gaussian_nll`/`beta_nll`) until Round 2, now consolidated into `022_training_efficientnet.ipynb`/`032_evaluation_efficientnet.ipynb`.
+- **Round 2, 3, 4** — not started.
 
 ---
 
@@ -14,7 +24,7 @@ Ranked most to least severe, as in `theory-links.md` §8.4-8.10.
 | 2 | No weight decay anywhere (`kernel_regularizer`, `regularizers`, `Adam(weight_decay=...)` all absent) | High | Hyperparameter — add `kernel_regularizer` or `Adam(weight_decay=...)` | All architectures |
 | 3 | All 23 conv layers use `GlorotUniform` (Xavier) with ReLU activations — the literature's own stated bad pairing | Medium | Hyperparameter — `kernel_initializer="he_normal"` | All architectures (mitigated by BatchNorm/GroupNorm, so lower urgency than #1/#2 despite being "free") |
 | 4 | No cross-validation — single fixed split, point-estimate metrics only | Medium | Evaluation methodology — grouped k-fold on top of the existing artwork-grouped split | K trainings per model included, not architecture-specific |
-| 5 | `resunet.py`'s residual shortcut is an unconditional learned projection (`Conv2D 1×1` + BatchNorm on every block), not the pure identity path the "uninterrupted additive path" argument (L06 slides 77-78) requires | Medium | Architectural — identity shortcut where channels already match | `resunet`, `resunet_nll` only |
+| 5 | `resunet.py`'s residual shortcut is an unconditional learned projection (`Conv2D 1×1` + BatchNorm on every block), not the pure identity path the "uninterrupted additive path" argument (L06 slides 77-78) requires | Medium — **resolved as not applicable** (see §0): every block always changes channel count, so a conditional identity path would be dead code | Architectural — identity shortcut where channels already match | `resunet`, `resunet_nll` — kept as unconditional projection (GroupNorm/He init still applied) |
 | 6 | Two-phase EfficientNet fine-tuning unused (`freeze_encoder=False` exists, never set) | Lower | Training procedure — unfreeze encoder in a second training phase | `efficientnet_unet`, `efficientnet_unet_nll` only |
 | 7 | Dilated convolution never tried — the standard way to widen receptive field without downsampling, which is this project's core architectural tension | Lower | Architectural — new variant, `dilation_rate` on selected conv layers | New variants only, not a fix to an existing model |
 | 8 | Documentation-only gaps (heteroscedastic-head universality/manifold argument, annotation-budget rationale, augmentation label-preservation principle — none written up) | Lowest | Documentation only | None |
@@ -116,9 +126,9 @@ Two implementation notes for whoever picks this up:
 
 Surfaced while discussing #9/#10: since the training objective changes shape in Round 1 (`combined_loss`'s balance shifts from MAE-dominant to 84%-MS-SSIM-dominant), the callbacks that decide when to checkpoint/stop/reduce LR should be reconsidered alongside it, not left as-is. A colleague proposal split the three callbacks across different monitored metrics (`val_mae` for checkpointing, `val_ssim` for early-stopping/LR); discussed and rejected in favor of monitoring **`val_loss` uniformly across all three** — since `val_loss` already *is* the actual training objective in whatever proportion #9 lands on, splitting onto different metrics risks saving a checkpoint that has no relationship to the plateau that determined how long training ran, and `val_ssim` alone (single-scale) doesn't even match what the loss now optimizes (MS-SSIM).
 
-**Not yet implemented — planned for Round 1.** No code touched by this conversation. When implemented:
+**Implemented** (see §0). `scripts/config.py`/`scripts/trainer.py`/`scripts/trainer_nll.py`:
 
-- Add new fields to `scripts/config.py` (`Settings`), with the values discussed here as defaults:
+- New fields added to `scripts/config.py` (`Settings`), with the values discussed here as defaults:
   - `EARLY_STOPPING_PATIENCE: int = 20` (was hardcoded `15` in `trainer.get_callbacks`)
   - `EARLY_STOPPING_MIN_DELTA: float = 0.0`
   - `EARLY_STOPPING_RESTORE_BEST_WEIGHTS: bool = False` (was hardcoded `True`; safe because every notebook reloads the best checkpoint from disk rather than reusing the in-memory `model` post-`fit()` — see caveat below)
@@ -127,8 +137,8 @@ Surfaced while discussing #9/#10: since the training objective changes shape in 
   - `REDUCE_LR_COOLDOWN: int = 2` (new — `get_callbacks` currently passes no `cooldown`, so it defaults to `0`; prevents rapid repeated LR drops right after a reduction)
   - `REDUCE_LR_MIN_DELTA: float = 1e-4` (new — currently unset/`0`)
   - `REDUCE_LR_MIN_LR: float = 1e-6` (was hardcoded `1e-7`)
-- Change all three callbacks' `monitor` to `"val_loss"` (`mode="min"`, the Keras default for a loss — no `mode=` override needed, unlike the rejected `val_ssim`/`val_mae` proposal which needed explicit `mode="max"`/`"min"`).
-- Make `trainer.get_callbacks`/`trainer_nll.get_callbacks_nll` accept these as parameters defaulting to the new `settings.*` fields (same pattern already used by `compile_model(lr: float = settings.LEARNING_RATE, ...)`), rather than hardcoding the literals inline as today.
+- All three callbacks' `monitor` set to `"val_loss"` (`mode="min"`, the Keras default for a loss — no `mode=` override needed, unlike the rejected `val_ssim`/`val_mae` proposal which needed explicit `mode="max"`/`"min"`).
+- `trainer.get_callbacks` now accepts these as parameters defaulting to the new `settings.*` fields (same pattern already used by `compile_model(lr: float = settings.LEARNING_RATE, ...)`), rather than hardcoding the literals inline as before. `trainer_nll` reuses the same `get_callbacks` (it never had its own).
 - **Caveat to carry forward**: `restore_best_weights=False` only stays safe as long as no notebook evaluates the in-memory `model` object immediately after `fit()` instead of reloading `best_model.keras` from disk. True today (`020_training.ipynb` and this plan's future notebooks all reload via `trainer.load_model`); worth a one-line check if that convention ever changes.
 
 ---

@@ -10,7 +10,7 @@ import pytest
 import tensorflow as tf
 
 from scripts.attention_unet_nll import build_attention_unet_nll
-from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss
+from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss, laplace_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
 from scripts.resunet_nll import build_resunet_nll
 from scripts.trainer_nll import (
@@ -275,6 +275,65 @@ def test_beta_nll_loss_sets_keras_friendly_name() -> None:
 
 
 # ---------------------------------------------------------------------------
+# scripts.losses.laplace_nll_loss
+# ---------------------------------------------------------------------------
+
+
+def test_laplace_nll_loss_is_low_for_accurate_confident_prediction() -> None:
+    # mu == y_true and low log_b (confident, correct) -> loss near its
+    # minimum (log_b, since the |error|/b term vanishes).
+    yt = _batch(0, channels=1)
+    mu = yt
+    log_b = tf.fill(yt.shape, -6.0)
+    y_pred = tf.concat([mu, log_b], axis=-1)
+
+    loss_val = float(laplace_nll_loss(beta=0.0)(yt, y_pred))
+    assert loss_val == pytest.approx(-6.0, abs=1e-4)
+
+
+def test_laplace_nll_loss_penalises_overconfident_wrong_prediction() -> None:
+    yt = tf.ones((2, 8, 8, 1), dtype=tf.float32) * 0.9
+    mu = tf.zeros((2, 8, 8, 1), dtype=tf.float32)
+
+    overconfident = tf.concat([mu, tf.fill(yt.shape, -6.0)], axis=-1)
+    uncertain = tf.concat([mu, tf.fill(yt.shape, 6.0)], axis=-1)
+
+    loss_fn = laplace_nll_loss(beta=0.0)
+    assert float(loss_fn(yt, overconfident)) > float(loss_fn(yt, uncertain))
+
+
+def test_laplace_nll_loss_clips_log_b_before_use() -> None:
+    yt = _batch(0, channels=1)
+    mu = yt
+    unclipped_log_b = tf.fill(yt.shape, 1000.0)
+    y_pred = tf.concat([mu, unclipped_log_b], axis=-1)
+
+    loss_val = float(
+        laplace_nll_loss(beta=0.0, min_log_b=-6.0, max_log_b=6.0)(yt, y_pred)
+    )
+    assert np.isfinite(loss_val)
+    assert loss_val == pytest.approx(6.0, abs=1e-4)
+
+
+def test_laplace_nll_loss_beta_zero_has_no_stop_gradient_weighting() -> None:
+    # weight = b^0 = 1 everywhere -> beta=0 is the plain (unweighted) NLL.
+    yt = tf.ones((2, 8, 8, 1), dtype=tf.float32) * 0.9
+    mu = tf.zeros((2, 8, 8, 1), dtype=tf.float32)
+    log_b = tf.fill(yt.shape, -1.0)
+    y_pred = tf.concat([mu, log_b], axis=-1)
+
+    b = np.exp(-1.0)
+    expected = np.abs(0.9) / b + (-1.0)
+    assert float(laplace_nll_loss(beta=0.0)(yt, y_pred)) == pytest.approx(
+        expected, rel=1e-4
+    )
+
+
+def test_laplace_nll_loss_sets_keras_friendly_name() -> None:
+    assert laplace_nll_loss().__name__ == "laplace_nll_loss"
+
+
+# ---------------------------------------------------------------------------
 # scripts.metrics.Mu*Metric
 # ---------------------------------------------------------------------------
 
@@ -364,10 +423,20 @@ def test_load_model_nll_raises_when_checkpoint_missing(tmp_path: Path) -> None:
         load_model_nll("attention_unet_nll", model_dir=tmp_path)
 
 
-def test_compile_model_nll_uses_gaussian_nll_loss(
+def test_compile_model_nll_uses_laplace_nll_loss_by_default(
     dummy_model_nll: tf.keras.Model,
 ) -> None:
+    # fixing.md #10: laplace_nll is the default for unet_nll/resunet_nll/
+    # attention_unet_nll; efficientnet_unet_nll must request
+    # "gaussian_nll"/"beta_nll" explicitly until Round 2.
     compile_model_nll(dummy_model_nll)
+    assert dummy_model_nll.loss.__name__ == "laplace_nll_loss"
+
+
+def test_compile_model_nll_uses_gaussian_nll_loss_when_requested(
+    dummy_model_nll: tf.keras.Model,
+) -> None:
+    compile_model_nll(dummy_model_nll, loss_name="gaussian_nll")
     assert dummy_model_nll.loss.__name__ == "gaussian_nll_loss"
 
 

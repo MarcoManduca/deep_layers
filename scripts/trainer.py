@@ -80,6 +80,7 @@ def compile_model(
     arch_name: str,
     lr: float = settings.LEARNING_RATE,
     loss_alpha: float = settings.LOSS_ALPHA,
+    weight_decay: float = settings.WEIGHT_DECAY,
 ) -> tf.keras.Model:
     """Compile a model with Adam and the loss selected for its architecture.
 
@@ -97,8 +98,10 @@ def compile_model(
     lr : float
         Initial Adam learning rate.
     loss_alpha : float
-        MAE weight in :func:`scripts.losses.combined_loss`.  Ignored for
-        architectures that use the advanced loss.
+        Charbonnier weight in :func:`scripts.losses.combined_loss`.
+        Ignored for architectures that use the advanced loss.
+    weight_decay : float
+        L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
 
     Returns
     -------
@@ -115,7 +118,7 @@ def compile_model(
     else:
         loss_fn = combined_loss(alpha=loss_alpha)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr, weight_decay=weight_decay),
         loss=loss_fn,
         metrics=[
             tf.keras.metrics.MeanAbsoluteError(name="mae"),
@@ -130,10 +133,25 @@ def get_callbacks(
     arch_name: str,
     log_dir: Path,
     model_dir: Path,
+    early_stopping_patience: int = settings.EARLY_STOPPING_PATIENCE,
+    early_stopping_min_delta: float = settings.EARLY_STOPPING_MIN_DELTA,
+    early_stopping_restore_best_weights: bool = (
+        settings.EARLY_STOPPING_RESTORE_BEST_WEIGHTS
+    ),
+    reduce_lr_factor: float = settings.REDUCE_LR_FACTOR,
+    reduce_lr_patience: int = settings.REDUCE_LR_PATIENCE,
+    reduce_lr_cooldown: int = settings.REDUCE_LR_COOLDOWN,
+    reduce_lr_min_delta: float = settings.REDUCE_LR_MIN_DELTA,
+    reduce_lr_min_lr: float = settings.REDUCE_LR_MIN_LR,
 ) -> list[tf.keras.callbacks.Callback]:
     """Return standard training callbacks for a given architecture.
 
-    Creates ``model_dir / arch_name /`` if it does not exist.
+    Creates ``model_dir / arch_name /`` if it does not exist. All three of
+    ``ModelCheckpoint``/``EarlyStopping``/``ReduceLROnPlateau`` monitor
+    ``val_loss`` uniformly (``fixing.md``'s callback-tuning note): the
+    checkpoint saved is always the one the stop/LR decisions were actually
+    based on, rather than splitting onto different metrics that can
+    diverge epoch to epoch.
 
     Parameters
     ----------
@@ -143,6 +161,26 @@ def get_callbacks(
         Root directory for TensorBoard event files.
     model_dir : Path
         Root directory for ``.keras`` checkpoints.
+    early_stopping_patience : int
+        Epochs with no ``val_loss`` improvement before stopping.
+    early_stopping_min_delta : float
+        Minimum ``val_loss`` change to count as an improvement.
+    early_stopping_restore_best_weights : bool
+        Whether to restore the best-epoch weights in memory when training
+        stops. Safe to leave ``False`` as long as evaluation reloads the
+        checkpoint from disk instead of reusing the in-memory model.
+    reduce_lr_factor : float
+        Multiplicative factor applied to the learning rate on plateau.
+    reduce_lr_patience : int
+        Epochs with no ``val_loss`` improvement before reducing the
+        learning rate.
+    reduce_lr_cooldown : int
+        Epochs to wait after a reduction before resuming plateau
+        monitoring, avoiding rapid repeated reductions.
+    reduce_lr_min_delta : float
+        Minimum ``val_loss`` change to count as an improvement.
+    reduce_lr_min_lr : float
+        Lower bound the learning rate is never reduced below.
 
     Returns
     -------
@@ -161,15 +199,18 @@ def get_callbacks(
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
-            patience=15,
-            restore_best_weights=True,
+            patience=early_stopping_patience,
+            min_delta=early_stopping_min_delta,
+            restore_best_weights=early_stopping_restore_best_weights,
             verbose=1,
         ),
         tf.keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss",
-            factor=0.5,
-            patience=7,
-            min_lr=1e-7,
+            factor=reduce_lr_factor,
+            patience=reduce_lr_patience,
+            cooldown=reduce_lr_cooldown,
+            min_delta=reduce_lr_min_delta,
+            min_lr=reduce_lr_min_lr,
             verbose=1,
         ),
         tf.keras.callbacks.TensorBoard(
@@ -184,6 +225,7 @@ def load_model(
     model_dir: Path = settings.MODELS_DIR,
     lr: float = settings.LEARNING_RATE,
     loss_alpha: float = settings.LOSS_ALPHA,
+    weight_decay: float = settings.WEIGHT_DECAY,
 ) -> tf.keras.Model:
     """Load the best checkpoint for an architecture and recompile it.
 
@@ -201,8 +243,11 @@ def load_model(
     lr : float
         Learning rate for recompilation.
     loss_alpha : float
-        MAE weight for recompilation.  Ignored for architectures that use
-        the advanced loss.
+        Charbonnier weight for recompilation. Ignored for architectures
+        that use the advanced loss.
+    weight_decay : float
+        L2 weight decay for recompilation. Irrelevant for
+        ``evaluate()``/``predict()``, only affects the optimizer state.
 
     Returns
     -------
@@ -220,4 +265,6 @@ def load_model(
             f"No checkpoint found at {model_path}. Run training first."
         )
     model = tf.keras.models.load_model(str(model_path), compile=False)
-    return compile_model(model, arch_name, lr=lr, loss_alpha=loss_alpha)
+    return compile_model(
+        model, arch_name, lr=lr, loss_alpha=loss_alpha, weight_decay=weight_decay
+    )

@@ -5,11 +5,13 @@ deterministic architectures (``unet``, ``resunet``, ``attention_unet``,
 ``efficientnet_unet``) and their checkpoints/behaviour are left untouched.
 This module wires up the NLL-variant builders instead, reusing
 ``scripts.trainer.get_callbacks`` (generic checkpoint/early-stopping/
-TensorBoard setup, not specific to any architecture or loss). All four NLL
-architectures share the same Gaussian NLL loss (unlike
-``scripts.trainer.uses_advanced_loss``, which special-cases
-``efficientnet_unet``'s deterministic loss) — there is no NLL counterpart
-of the advanced loss.
+TensorBoard setup, not specific to any architecture or loss). Since
+``fixing.md`` #10, `unet_nll`/`resunet_nll`/`attention_unet_nll` train
+with a single Laplace-beta NLL loss (:func:`scripts.losses.laplace_nll_loss`,
+the ``"laplace_nll"`` default below); `efficientnet_unet_nll` still trains
+with both Gaussian NLL variants (``"gaussian_nll"``/``"beta_nll"``) until
+Round 2 collapses it the same way. There is no NLL counterpart of the
+deterministic advanced loss.
 """
 
 from pathlib import Path
@@ -19,7 +21,7 @@ import tensorflow as tf
 from scripts.attention_unet_nll import build_attention_unet_nll
 from scripts.config import settings
 from scripts.efficientnet_unet_nll import build_efficientnet_unet_nll
-from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss
+from scripts.losses import beta_gaussian_nll_loss, gaussian_nll_loss, laplace_nll_loss
 from scripts.metrics import MuMAEMetric, MuPSNRMetric, MuSSIMMetric
 from scripts.resunet_nll import build_resunet_nll
 from scripts.trainer import get_callbacks
@@ -35,13 +37,19 @@ _BUILDERS_NLL = {
 # Registered NLL loss constructors, keyed by name. All take the same
 # (min_log_var, max_log_var, beta) signature so callers can select one by
 # name without caring which extra arguments it actually uses — `beta` is
-# ignored by "gaussian_nll" and only meaningful for "beta_nll".
+# ignored by "gaussian_nll" and meaningful for "beta_nll"/"laplace_nll".
+# "laplace_nll" is the default (fixing.md #10) for unet_nll/resunet_nll/
+# attention_unet_nll; "gaussian_nll"/"beta_nll" remain registered because
+# efficientnet_unet_nll still trains with both until Round 2.
 _LOSSES_NLL = {
     "gaussian_nll": lambda min_log_var, max_log_var, beta: gaussian_nll_loss(
         min_log_var=min_log_var, max_log_var=max_log_var
     ),
     "beta_nll": lambda min_log_var, max_log_var, beta: beta_gaussian_nll_loss(
         beta=beta, min_log_var=min_log_var, max_log_var=max_log_var
+    ),
+    "laplace_nll": lambda min_log_var, max_log_var, beta: laplace_nll_loss(
+        beta=beta, min_log_b=min_log_var, max_log_b=max_log_var
     ),
 }
 
@@ -99,8 +107,9 @@ def compile_model_nll(
     lr: float = settings.LEARNING_RATE,
     min_log_var: float = settings.NLL_LOG_VAR_MIN,
     max_log_var: float = settings.NLL_LOG_VAR_MAX,
-    loss_name: str = "gaussian_nll",
-    beta: float = 0.5,
+    loss_name: str = "laplace_nll",
+    beta: float = settings.NLL_BETA,
+    weight_decay: float = settings.WEIGHT_DECAY,
 ) -> tf.keras.Model:
     """Compile a heteroscedastic model with Adam and a heteroscedastic NLL loss.
 
@@ -118,16 +127,21 @@ def compile_model_nll(
     lr : float
         Initial Adam learning rate.
     min_log_var : float
-        Lower clip bound for ``log_var`` inside the loss.
+        Lower clip bound for the second channel inside the loss.
     max_log_var : float
-        Upper clip bound for ``log_var`` inside the loss.
+        Upper clip bound for the second channel inside the loss.
     loss_name : str
-        Which NLL loss to compile with — one of :data:`NLL_LOSSES`
-        (``"gaussian_nll"``, the plain Gaussian NLL; ``"beta_nll"``, the
-        beta-weighted variant from Seitzer et al. 2022,
-        :func:`scripts.losses.beta_gaussian_nll_loss`).
+        Which NLL loss to compile with — one of :data:`NLL_LOSSES`.
+        Default ``"laplace_nll"`` (:func:`scripts.losses.laplace_nll_loss`,
+        ``fixing.md`` #10) — the current default for `unet_nll`,
+        `resunet_nll`, `attention_unet_nll`. Pass ``"gaussian_nll"``/
+        ``"beta_nll"`` explicitly for `efficientnet_unet_nll`, which still
+        trains with the Gaussian losses until Round 2.
     beta : float
-        Weighting exponent, used only when ``loss_name == "beta_nll"``.
+        Weighting exponent, used by ``"beta_nll"``/``"laplace_nll"``,
+        ignored by ``"gaussian_nll"``.
+    weight_decay : float
+        L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
 
     Returns
     -------
@@ -136,7 +150,7 @@ def compile_model_nll(
     """
     loss_fn = _get_loss_nll(loss_name, min_log_var, max_log_var, beta)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr, weight_decay=weight_decay),
         loss=loss_fn,
         metrics=[MuMAEMetric(), MuSSIMMetric(), MuPSNRMetric()],
     )
@@ -149,8 +163,9 @@ def load_model_nll(
     lr: float = settings.LEARNING_RATE,
     min_log_var: float = settings.NLL_LOG_VAR_MIN,
     max_log_var: float = settings.NLL_LOG_VAR_MAX,
-    loss_name: str = "gaussian_nll",
-    beta: float = 0.5,
+    loss_name: str = "laplace_nll",
+    beta: float = settings.NLL_BETA,
+    weight_decay: float = settings.WEIGHT_DECAY,
 ) -> tf.keras.Model:
     """Load the best checkpoint for an NLL architecture and recompile it.
 
@@ -174,13 +189,17 @@ def load_model_nll(
     lr : float
         Learning rate for recompilation.
     min_log_var : float
-        Lower clip bound for ``log_var`` inside the loss.
+        Lower clip bound for the second channel inside the loss.
     max_log_var : float
-        Upper clip bound for ``log_var`` inside the loss.
+        Upper clip bound for the second channel inside the loss.
     loss_name : str
         Which NLL loss to recompile with — one of :data:`NLL_LOSSES`.
+        Pass the same value the checkpoint was trained with.
     beta : float
-        Weighting exponent, used only when ``loss_name == "beta_nll"``.
+        Weighting exponent, used by ``"beta_nll"``/``"laplace_nll"``.
+    weight_decay : float
+        L2 weight decay for recompilation. Irrelevant for
+        ``evaluate()``/``predict()``, only affects the optimizer state.
 
     Returns
     -------
@@ -205,4 +224,5 @@ def load_model_nll(
         max_log_var=max_log_var,
         loss_name=loss_name,
         beta=beta,
+        weight_decay=weight_decay,
     )

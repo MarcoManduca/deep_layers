@@ -22,10 +22,17 @@ useful if it is *calibrated* **and** *sharp*.
   with none of the color/context conditioning the heteroscedastic head exists
   to provide. ``dispersion == 0`` means exactly that failure.
 
-:func:`mean_gaussian_nll` is the one number that folds accuracy and calibration
-together (a proper scoring rule), and is the natural tie-breaker when
-``mae``/``ssim``/``psnr`` and the calibration metrics disagree — as they do
-between ``gaussian_nll`` and ``beta_nll``.
+:func:`mean_gaussian_nll` (and its Laplace counterpart,
+:func:`mean_laplace_nll`, for `unet_nll`/`resunet_nll`/`attention_unet_nll`
+since ``fixing.md`` #10) is the one number that folds accuracy and
+calibration together (a proper scoring rule), and is the natural
+tie-breaker when ``mae``/``ssim``/``psnr`` and the calibration metrics
+disagree. Every other function here (``coverage_probability``,
+``sigma_reliability``, ``sharpness``, ``dispersion``, ``learned_zscore``)
+takes ``sigma`` (true standard deviation) as a plain input and is
+distribution-agnostic — only the NLL term differs structurally between
+Gaussian and Laplace, so :func:`evaluate_calibration`'s ``distribution``
+parameter dispatches only that one term.
 
 References
 ----------
@@ -406,6 +413,63 @@ def mean_gaussian_nll(real_ir: np.ndarray, mu: np.ndarray, sigma: np.ndarray) ->
     return float(np.mean(nll))
 
 
+def mean_laplace_nll(real_ir: np.ndarray, mu: np.ndarray, b: np.ndarray) -> float:
+    """Return the mean per-pixel Laplace negative log-likelihood, in nats.
+
+    ``log(2 * b) + |real - mu| / b``: the Laplace counterpart of
+    :func:`mean_gaussian_nll`, for models trained with
+    ``scripts.losses.laplace_nll_loss`` (``fixing.md`` #10). A proper
+    scoring rule, minimised only by the true ``(mu, b)``. Unlike
+    ``scripts.losses.laplace_nll_loss`` — which drops the additive
+    ``log(2)`` constant, irrelevant to gradients — this keeps it, so the
+    value is a real likelihood comparable across models and runs.
+
+    Parameters
+    ----------
+    real_ir : np.ndarray
+        Ground-truth IR image, shape ``(H, W)`` or ``(H, W, 1)``.
+    mu : np.ndarray
+        Predicted mean IR, same shape convention as ``real_ir``.
+    b : np.ndarray
+        Predicted Laplace scale (``exp(log_b)``, *not* the standard
+        deviation — see :func:`laplace_sigma_from_scale` for the
+        conversion), same shape convention as ``real_ir``.
+
+    Returns
+    -------
+    float
+        Mean NLL in nats; lower is better.
+    """
+    scale = b.squeeze().astype(np.float64) + _EPS
+    residual = real_ir.squeeze().astype(np.float64) - mu.squeeze().astype(np.float64)
+    nll = np.log(2.0 * scale) + np.abs(residual) / scale
+    return float(np.mean(nll))
+
+
+def laplace_sigma_from_scale(b: np.ndarray) -> np.ndarray:
+    """Convert a Laplace scale ``b`` to its standard deviation.
+
+    A Laplace(``mu``, ``b``) distribution has variance ``2 * b^2``, so
+    ``sigma = b * sqrt(2)`` — *not* ``exp(0.5 * log_b)``, the Gaussian
+    formula every notebook previously applied uniformly to every NLL
+    architecture's second channel. Use this (not the Gaussian formula) to
+    get a true standard deviation from `unet_nll`/`resunet_nll`/
+    `attention_unet_nll` predictions before passing it to any function in
+    this module that expects ``sigma`` (``fixing.md`` #10).
+
+    Parameters
+    ----------
+    b : np.ndarray
+        Predicted Laplace scale, ``exp(log_b)``.
+
+    Returns
+    -------
+    np.ndarray
+        Standard deviation, same shape as ``b``.
+    """
+    return b * math.sqrt(2.0)
+
+
 @dataclass(frozen=True)
 class CalibrationResult:
     """Everything :func:`evaluate_calibration` measures about one prediction.
@@ -423,7 +487,8 @@ class CalibrationResult:
     dispersion : float
         Coefficient of variation of ``sigma``.
     nll : float
-        Mean Gaussian negative log-likelihood, in nats.
+        Mean negative log-likelihood, in nats — Gaussian or Laplace
+        depending on ``evaluate_calibration``'s ``distribution`` argument.
     z_mean, z_std : float
         Moments of the learned z-score; a calibrated model gives ``0`` and
         ``1``. ``z_std > 1`` is overconfidence, ``< 1`` underconfidence.
@@ -471,15 +536,25 @@ def evaluate_calibration(
     n_bins: int = 10,
     max_samples: int = 500_000,
     seed: int = 0,
+    distribution: str = "gaussian",
 ) -> CalibrationResult:
     """Score a heteroscedastic prediction's ``sigma`` on its own.
 
     The counterpart of ``scripts.delta_analysis.analyze_delta``: that one turns
     a prediction into maps for the eye, this one turns it into numbers for a
     table. Run it on ``mu``/``sigma`` from a direct ``model.predict`` to
-    compare NLL variants — ``gaussian_nll`` vs. ``beta_nll``, or different
-    ``beta`` — on the uncertainty signal itself rather than through ``mu``
-    alone.
+    compare NLL variants on the uncertainty signal itself rather than
+    through ``mu`` alone.
+
+    Every metric here except ``nll`` treats ``sigma`` as a plain standard
+    deviation and is distribution-agnostic; only the NLL term's formula
+    differs structurally between Gaussian and Laplace, so ``distribution``
+    dispatches only that one term. Pass the correct ``sigma`` for either
+    case: the Gaussian formula (``exp(0.5 * log_var)``) for
+    `efficientnet_unet_nll` (until Round 2), or
+    :func:`laplace_sigma_from_scale` (``b * sqrt(2)``, **not**
+    ``exp(0.5 * log_b)``) for `unet_nll`/`resunet_nll`/
+    `attention_unet_nll` (``fixing.md`` #10).
 
     Parameters
     ----------
@@ -488,8 +563,8 @@ def evaluate_calibration(
     mu : np.ndarray
         Predicted mean IR, same shape convention as ``real_ir``.
     sigma : np.ndarray
-        Predicted standard deviation ``exp(0.5 * log_var)``, same shape
-        convention as ``real_ir``.
+        Predicted standard deviation, same shape convention as ``real_ir``
+        — see the distribution-specific conversion above.
     coverage_levels : tuple[float, ...]
         Interval half-widths, in predicted standard deviations, to score.
     n_bins : int
@@ -498,11 +573,30 @@ def evaluate_calibration(
         Subsampling cap for the Spearman correlation.
     seed : int
         Seed for that subsampling.
+    distribution : str
+        Which NLL formula to use for the ``nll`` field: ``"gaussian"``
+        (:func:`mean_gaussian_nll`) or ``"laplace"``
+        (:func:`mean_laplace_nll`, converting ``sigma`` back to the
+        Laplace scale ``b = sigma / sqrt(2)``).
 
     Returns
     -------
     CalibrationResult
+
+    Raises
+    ------
+    ValueError
+        If ``distribution`` is not ``"gaussian"`` or ``"laplace"``.
     """
+    if distribution == "gaussian":
+        nll = mean_gaussian_nll(real_ir, mu, sigma)
+    elif distribution == "laplace":
+        nll = mean_laplace_nll(real_ir, mu, sigma / math.sqrt(2.0))
+    else:
+        raise ValueError(
+            f"Unknown distribution '{distribution}'. Use 'gaussian' or 'laplace'."
+        )
+
     z = learned_zscore(real_ir, mu, sigma)
 
     return CalibrationResult(
@@ -515,7 +609,7 @@ def evaluate_calibration(
         ),
         sharpness=sharpness(sigma),
         dispersion=dispersion(sigma),
-        nll=mean_gaussian_nll(real_ir, mu, sigma),
+        nll=nll,
         z_mean=float(np.mean(z)),
         z_std=float(np.std(z)),
         zscore=z,

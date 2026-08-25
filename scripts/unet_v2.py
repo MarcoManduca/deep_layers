@@ -27,18 +27,7 @@ is architecturally identical to :func:`scripts.unet.build_unet`.
 import tensorflow as tf
 from tensorflow.keras import layers
 
-
-def _num_groups(filters: int, max_groups: int = 32) -> int:
-    """Largest divisor of ``filters`` that is at most ``max_groups``.
-
-    ``GroupNormalization`` requires ``groups`` to divide the channel count
-    evenly; a fixed ``32`` (the paper's default) fails on the small filter
-    counts unit tests use, so the group count adapts down.
-    """
-    groups = min(max_groups, filters)
-    while filters % groups != 0:
-        groups -= 1
-    return groups
+from scripts.norm_utils import num_groups as _num_groups
 
 
 @tf.keras.utils.register_keras_serializable(package="deep_layers")
@@ -79,10 +68,14 @@ def _conv_block(x: tf.Tensor, filters: int, dropout_rate: float = 0.0) -> tf.Ten
     tf.Tensor
         Output feature map with shape ``(..., H, W, filters)``.
     """
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = layers.ReLU()(x)
     if dropout_rate > 0.0:
@@ -93,7 +86,14 @@ def _conv_block(x: tf.Tensor, filters: int, dropout_rate: float = 0.0) -> tf.Ten
 def _downsample(x: tf.Tensor, filters: int, use_strided_conv: bool) -> tf.Tensor:
     """Halve H/W via a learned stride-2 conv or plain max pooling."""
     if use_strided_conv:
-        x = layers.Conv2D(filters, 3, strides=2, padding="same", use_bias=False)(x)
+        x = layers.Conv2D(
+            filters,
+            3,
+            strides=2,
+            padding="same",
+            use_bias=False,
+            kernel_initializer="he_normal",
+        )(x)
         x = layers.GroupNormalization(groups=_num_groups(filters))(x)
         x = layers.ReLU()(x)
         return x
@@ -104,7 +104,9 @@ def _upsample(x: tf.Tensor, filters: int, use_upsample_conv: bool) -> tf.Tensor:
     """Double H/W via bilinear upsample + conv, or transposed convolution."""
     if use_upsample_conv:
         x = _Upsample2x()(x)
-        x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
+        x = layers.Conv2D(
+            filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+        )(x)
         x = layers.GroupNormalization(groups=_num_groups(filters))(x)
         x = layers.ReLU()(x)
         return x

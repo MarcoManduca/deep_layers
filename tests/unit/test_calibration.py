@@ -10,8 +10,10 @@ from scripts.calibration import (
     dispersion,
     error_sigma_correlation,
     evaluate_calibration,
+    laplace_sigma_from_scale,
     learned_zscore,
     mean_gaussian_nll,
+    mean_laplace_nll,
     nominal_coverage,
     sharpness,
     sigma_reliability,
@@ -211,6 +213,37 @@ def test_mean_gaussian_nll_is_lowest_at_the_true_sigma(wrong_scale: float) -> No
     assert calibrated < miscalibrated
 
 
+def test_mean_laplace_nll_matches_the_manual_formula() -> None:
+    real = np.array([[0.7]], dtype=np.float32)
+    mu = np.array([[0.5]], dtype=np.float32)
+    b = np.array([[0.1]], dtype=np.float32)
+    expected = math.log(2 * 0.1) + 0.2 / 0.1
+
+    assert mean_laplace_nll(real, mu, b) == pytest.approx(expected, abs=1e-4)
+
+
+@pytest.mark.parametrize("wrong_scale", [0.25, 4.0])
+def test_mean_laplace_nll_is_lowest_at_the_true_scale(wrong_scale: float) -> None:
+    rng = np.random.default_rng(0)
+    mu = np.full(_SIZE, 0.5, dtype=np.float32)
+    b = np.full(_SIZE, 0.1, dtype=np.float32)
+    # Laplace(0, 1) samples via the difference of two exponentials.
+    real = mu + b * (
+        rng.exponential(size=_SIZE).astype(np.float32)
+        - rng.exponential(size=_SIZE).astype(np.float32)
+    )
+
+    calibrated = mean_laplace_nll(real, mu, b)
+    miscalibrated = mean_laplace_nll(real, mu, b * wrong_scale)
+
+    assert calibrated < miscalibrated
+
+
+def test_laplace_sigma_from_scale_applies_sqrt_two() -> None:
+    b = np.array([1.0, 2.0], dtype=np.float32)
+    assert laplace_sigma_from_scale(b) == pytest.approx(b * math.sqrt(2.0))
+
+
 # --- aggregate ---------------------------------------------------------------
 
 
@@ -267,6 +300,31 @@ def test_evaluate_calibration_summary_values_are_plain_floats() -> None:
     summary = evaluate_calibration(real, mu, sigma).summary()
 
     assert all(isinstance(value, float) for value in summary.values())
+
+
+def test_evaluate_calibration_defaults_to_gaussian_nll() -> None:
+    real, mu, sigma = _heteroscedastic_pair()
+
+    result = evaluate_calibration(real, mu, sigma)
+
+    assert result.nll == pytest.approx(mean_gaussian_nll(real, mu, sigma))
+
+
+def test_evaluate_calibration_laplace_distribution_uses_laplace_nll() -> None:
+    real, mu, sigma = _heteroscedastic_pair()
+
+    result = evaluate_calibration(real, mu, sigma, distribution="laplace")
+
+    expected = mean_laplace_nll(real, mu, sigma / math.sqrt(2.0))
+    assert result.nll == pytest.approx(expected)
+    assert result.nll != pytest.approx(mean_gaussian_nll(real, mu, sigma))
+
+
+def test_evaluate_calibration_raises_on_unknown_distribution() -> None:
+    real, mu, sigma = _heteroscedastic_pair()
+
+    with pytest.raises(ValueError, match="Unknown distribution"):
+        evaluate_calibration(real, mu, sigma, distribution="does_not_exist")
 
 
 def test_structural_zscore_matches_direct_division_with_no_smoothing() -> None:
