@@ -81,6 +81,7 @@ def compile_model(
     lr: float = settings.LEARNING_RATE,
     loss_alpha: float = settings.LOSS_ALPHA,
     weight_decay: float = settings.WEIGHT_DECAY,
+    clipvalue: float = settings.GRADIENT_CLIP_VALUE,
 ) -> tf.keras.Model:
     """Compile a model with Adam and the loss selected for its architecture.
 
@@ -102,6 +103,11 @@ def compile_model(
         Ignored for architectures that use the advanced loss.
     weight_decay : float
         L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
+    clipvalue : float
+        Per-element gradient clip passed to ``Adam(clipvalue=...)`` —
+        guards against ``ms_ssim_loss``'s gradient singularity at a
+        collapsed-to-zero scale term (see ``settings.GRADIENT_CLIP_VALUE``,
+        ``fixing.md`` §7).
 
     Returns
     -------
@@ -118,7 +124,9 @@ def compile_model(
     else:
         loss_fn = combined_loss(alpha=loss_alpha)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr, weight_decay=weight_decay),
+        optimizer=tf.keras.optimizers.Adam(
+            learning_rate=lr, weight_decay=weight_decay, clipvalue=clipvalue
+        ),
         loss=loss_fn,
         metrics=[
             tf.keras.metrics.MeanAbsoluteError(name="mae"),

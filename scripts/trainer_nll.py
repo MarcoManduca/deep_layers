@@ -110,6 +110,7 @@ def compile_model_nll(
     loss_name: str = "laplace_nll",
     beta: float = settings.NLL_BETA,
     weight_decay: float = settings.WEIGHT_DECAY,
+    clipvalue: float = settings.GRADIENT_CLIP_VALUE,
 ) -> tf.keras.Model:
     """Compile a heteroscedastic model with Adam and a heteroscedastic NLL loss.
 
@@ -142,6 +143,10 @@ def compile_model_nll(
         ignored by ``"gaussian_nll"``.
     weight_decay : float
         L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
+    clipvalue : float
+        Per-element gradient clip passed to ``Adam(clipvalue=...)`` — see
+        ``scripts.trainer.compile_model``'s docstring and
+        ``settings.GRADIENT_CLIP_VALUE`` for why (``fixing.md`` §7).
 
     Returns
     -------
@@ -150,7 +155,9 @@ def compile_model_nll(
     """
     loss_fn = _get_loss_nll(loss_name, min_log_var, max_log_var, beta)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr, weight_decay=weight_decay),
+        optimizer=tf.keras.optimizers.Adam(
+            learning_rate=lr, weight_decay=weight_decay, clipvalue=clipvalue
+        ),
         loss=loss_fn,
         metrics=[MuMAEMetric(), MuSSIMMetric(), MuPSNRMetric()],
     )

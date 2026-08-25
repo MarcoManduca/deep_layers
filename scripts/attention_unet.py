@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 from scripts.norm_utils import num_groups as _num_groups
+from scripts.norm_utils import relu as _relu
 
 
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
@@ -28,12 +29,12 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     x = layers.Conv2D(
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     return x
 
 
@@ -66,7 +67,7 @@ def _attention_gate(
     phi_g = layers.Conv2D(filters, 1, padding="same", use_bias=False)(g)
 
     add = layers.Add()([theta_x, phi_g])
-    add = layers.ReLU()(add)
+    add = _relu(add)
 
     psi = layers.Conv2D(1, 1, padding="same", use_bias=False)(add)
     psi = layers.Activation("sigmoid")(psi)

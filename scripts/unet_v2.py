@@ -28,6 +28,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 from scripts.norm_utils import num_groups as _num_groups
+from scripts.norm_utils import relu as _relu
 
 
 @tf.keras.utils.register_keras_serializable(package="deep_layers")
@@ -72,12 +73,12 @@ def _conv_block(x: tf.Tensor, filters: int, dropout_rate: float = 0.0) -> tf.Ten
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     x = layers.Conv2D(
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     if dropout_rate > 0.0:
         x = layers.SpatialDropout2D(dropout_rate)(x)
     return x
@@ -95,7 +96,7 @@ def _downsample(x: tf.Tensor, filters: int, use_strided_conv: bool) -> tf.Tensor
             kernel_initializer="he_normal",
         )(x)
         x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-        x = layers.ReLU()(x)
+        x = _relu(x)
         return x
     return layers.MaxPool2D(2)(x)
 
@@ -108,7 +109,7 @@ def _upsample(x: tf.Tensor, filters: int, use_upsample_conv: bool) -> tf.Tensor:
             filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
         )(x)
         x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-        x = layers.ReLU()(x)
+        x = _relu(x)
         return x
     return layers.Conv2DTranspose(filters, 2, strides=2, padding="same")(x)
 

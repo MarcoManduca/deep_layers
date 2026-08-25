@@ -19,6 +19,7 @@ from tensorflow.keras import layers
 from scripts.config import settings
 from scripts.nll_layers import ClipLogVar
 from scripts.norm_utils import num_groups as _num_groups
+from scripts.norm_utils import relu as _relu
 
 
 def _residual_block(x: tf.Tensor, filters: int) -> tf.Tensor:
@@ -49,14 +50,14 @@ def _residual_block(x: tf.Tensor, filters: int) -> tf.Tensor:
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     x = layers.Conv2D(
         filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
     )(x)
     x = layers.GroupNormalization(groups=_num_groups(filters))(x)
 
     x = layers.Add()([x, shortcut])
-    x = layers.ReLU()(x)
+    x = _relu(x)
     return x
 
 

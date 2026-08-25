@@ -3,6 +3,8 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from scripts.norm_utils import relu as _relu
+
 # EfficientNetB0 intermediate layer names and their spatial scales.
 # Stem conv applies stride-2 first, so all scales are relative to input.
 _SKIP_LAYER_NAMES: list[str] = [
@@ -52,10 +54,10 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """
     x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
     x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
     x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
+    x = _relu(x)
     return x
 
 

@@ -55,6 +55,17 @@ class Settings(BaseSettings):
     WEIGHT_DECAY : float
         L2 weight decay passed to ``Adam(weight_decay=...)`` during
         training (``fixing.md`` #2).
+    GRADIENT_CLIP_VALUE : float
+        Per-element gradient clip passed to ``Adam(clipvalue=...)``.
+        Guards against ``tf.image.ssim_multiscale``'s known gradient
+        singularity: its per-scale power terms use fractional exponents
+        (the standard MS-SSIM power factors), and differentiating ``x**p``
+        at ``x=0`` (a scale's structural term collapsing to exactly zero,
+        clamped there internally by TF) gives ``0**(p-1)`` with ``p-1<0``,
+        i.e. ``+Inf``. Unlike ``clipnorm`` — which can turn an already-Inf
+        gradient into ``NaN`` via ``Inf/Inf`` when computing the global
+        norm — per-element ``clipvalue`` caps each entry directly, turning
+        ``Inf`` into a large finite number instead (`fixing.md` §7).
     NLL_BETA : float
         Weighting exponent for the beta-weighted NLL losses
         (``scripts.losses.beta_gaussian_nll_loss``,
@@ -137,6 +148,7 @@ class Settings(BaseSettings):
     LOSS_ALPHA: float = 0.16
     CHARBONNIER_EPS: float = 1e-3
     WEIGHT_DECAY: float = 1e-5
+    GRADIENT_CLIP_VALUE: float = 1.0
     NLL_BETA: float = 0.5
 
     EARLY_STOPPING_PATIENCE: int = 20
