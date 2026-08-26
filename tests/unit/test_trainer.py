@@ -30,9 +30,26 @@ def test_efficientnet_unet_ft_is_registered_without_building_it() -> None:
     assert _BUILDERS["efficientnet_unet_ft"] is _BUILDERS["efficientnet_unet"]
 
 
+def test_dilated_variants_are_registered() -> None:
+    # fixing.md #7 (Round 3): unet_dilated/unet_v2_dilated build a full
+    # tf.keras.Model (downloads nothing, unlike efficientnet_unet) —
+    # covered directly by tests/unit/test_unet_dilated.py; only check
+    # registration and arch_name plumbing here.
+    assert "unet_dilated" in _BUILDERS
+    assert "unet_v2_dilated" in _BUILDERS
+
+
 @pytest.mark.parametrize(
     "arch_name",
-    ["unet", "resunet", "attention_unet", "efficientnet_unet", "efficientnet_unet_ft"],
+    [
+        "unet",
+        "resunet",
+        "attention_unet",
+        "efficientnet_unet",
+        "efficientnet_unet_ft",
+        "unet_dilated",
+        "unet_v2_dilated",
+    ],
 )
 def test_compile_model_uses_combined_loss_for_every_architecture(
     arch_name: str, dummy_model: tf.keras.Model

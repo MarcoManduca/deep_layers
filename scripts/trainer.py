@@ -11,8 +11,10 @@ from scripts.losses import combined_loss
 from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
+from scripts.unet_dilated import build_unet_dilated
 from scripts.unet_restormer import build_unet_restormer
 from scripts.unet_v2 import build_unet_v2
+from scripts.unet_v2_dilated import build_unet_v2_dilated
 
 _BUILDERS = {
     "unet": build_unet,
@@ -28,6 +30,12 @@ _BUILDERS = {
     # passes `--kwargs '{"freeze_encoder": false}' --init-from
     # <efficientnet_unet checkpoint>` to build and warm-start this variant.
     "efficientnet_unet_ft": build_efficientnet_unet,
+    # Round 3 (fixing.md #7, exploratory): dilated-bottleneck variants of
+    # "unet"/"unet_v2", saved under their own `arch_name` rather than
+    # overwriting the plain checkpoints, so the two can be compared
+    # directly (see scripts/aspp.py).
+    "unet_dilated": build_unet_dilated,
+    "unet_v2_dilated": build_unet_v2_dilated,
 }
 
 
@@ -41,7 +49,8 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
         ``"resunet"``, ``"attention_unet"``, ``"efficientnet_unet"``,
         ``"efficientnet_unet_ft"`` (the Round 2 two-phase fine-tuning
         checkpoint — same builder as ``"efficientnet_unet"``, see
-        ``_BUILDERS``).
+        ``_BUILDERS``), ``"unet_dilated"``, ``"unet_v2_dilated"`` (Round 3
+        dilated-bottleneck variants, ``fixing.md`` #7).
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``).

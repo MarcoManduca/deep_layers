@@ -101,6 +101,10 @@ class Settings(BaseSettings):
         Weight of the FFT magnitude term in ``combined_loss_advanced``.
     LAPLACIAN_LEVELS : int
         Number of Laplacian pyramid levels in ``combined_loss_advanced``.
+    DILATION_RATES : list[int]
+        Dilation rate for each parallel branch of the Round 3 dilated
+        bottleneck (``scripts.aspp.dilated_bottleneck``, ``fixing.md`` #7),
+        used by ``unet_dilated``/``unet_v2_dilated``.
     CROP_SIZE : int or None
         If set, training augmentation randomly crops each pair to a square
         of this side length (must be a multiple of ``PATCH_MULTIPLE``).
@@ -185,6 +189,7 @@ class Settings(BaseSettings):
     ADV_LOSS_BETA: float = 0.3
     ADV_LOSS_GAMMA: float = 0.2
     LAPLACIAN_LEVELS: int = 4
+    DILATION_RATES: list[int] = [1, 2, 4, 8]
 
     CROP_SIZE: int | None = None
 
