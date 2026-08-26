@@ -130,7 +130,8 @@ deep_layers/
 │   ├── 050_signal_sweep.ipynb        # Signal maps — deterministic, every test image
 │   ├── 051_signal_sweep_nll.ipynb    # Signal maps — NLL, every test image
 │   ├── 052_model_comparison.ipynb    # User-chosen model subset, one signal across models
-│   └── 053_signal_evolution_sweep.ipynb # User-chosen model subset, every signal per model
+│   ├── 053_signal_evolution_sweep.ipynb # User-chosen model subset, every signal per model
+│   └── C0_v1_v2.ipynb                # v1 vs. v2 — the same architectures, before and after the fixing rounds
 ├── scripts/
 │   ├── config.py                     # Pydantic settings (paths, hyperparameters, split ratios)
 │   ├── dataset.py                    # Pair loading, artwork-and-mockups split, tf.data pipeline
@@ -222,11 +223,14 @@ Execute them in numeric order from the `notebooks/` directory — each series bu
 030, 031, 032, 033 → mae/ssim/psnr on the held-out test set, per family
 040, 041, 042      → signal detection against real ground-truth masks (AUROC), per family + cross-family
 050, 051, 052, 053 → perceptual signal inspection across every data/test/ image, per family + cross-family
+C0                 → v1 vs. v2: every architecture that has a checkpoint in both generations, scored side by side
 ```
 
 ```bash
 jupyter notebook notebooks/
 ```
+
+`C0_v1_v2.ipynb` is out of the numeric series on purpose: it does not extend the pipeline, it compares the current checkpoints (`models/deterministic/`, `models/nll/`) against the pre-`fixing.md` ones kept under `models/v1/`, on the same `data/test/` images and with the same signals the 04x/05x series uses. It needs both generations on disk and nothing else.
 
 `052`/`053` take an editable `MODELS` list (any mix of architectures/loss variants) rather than looping a fixed family — the default selection is the best two deterministic and best two NLL architectures found in the 03x/04x notebooks.
 
