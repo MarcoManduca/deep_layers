@@ -3,6 +3,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from scripts.norm_utils import num_groups as _num_groups
 from scripts.norm_utils import relu as _relu
 
 # EfficientNetB0 intermediate layer names and their spatial scales.
@@ -38,7 +39,22 @@ class _ResizeToMatch(layers.Layer):
 
 
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
-    """Two consecutive Conv → BN → ReLU operations.
+    """Two consecutive Conv → GroupNorm → ReLU operations (decoder only).
+
+    Round 2 (``fixing.md`` §2, "EfficientNet, handled separately") applies
+    #1/#3 to this **decoder** block only — never to the pretrained
+    EfficientNetB0 *encoder* built in :func:`build_efficientnet_unet`, whose
+    internal ``BatchNormalization``/ReLU/Swish layers are Keras Applications'
+    own and are left completely untouched: replacing them would discard the
+    ImageNet batch statistics the pretrained weights were fit with, defeating
+    transfer learning. This block only ever sees decoder feature maps, so
+    swapping ``BatchNormalization`` → ``GroupNormalization`` and adding
+    ``kernel_initializer="he_normal"`` here is safe and does not touch the
+    encoder. See ``scripts.unet._conv_block`` for the identical pattern
+    already applied to the from-scratch (Round 1) architectures, and
+    ``fixing.md`` §3 for why the decoder's smallest channel count (16, the
+    last stage) needs :func:`scripts.norm_utils.num_groups` rather than a
+    fixed ``groups=32`` (32 does not divide 16).
 
     Parameters
     ----------
@@ -52,11 +68,15 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     tf.Tensor
         Output feature map with shape ``(..., H, W, filters)``.
     """
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = _relu(x)
-    x = layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
+    x = layers.Conv2D(
+        filters, 3, padding="same", use_bias=False, kernel_initializer="he_normal"
+    )(x)
+    x = layers.GroupNormalization(groups=_num_groups(filters))(x)
     x = _relu(x)
     return x
 

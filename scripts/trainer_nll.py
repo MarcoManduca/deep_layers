@@ -6,12 +6,17 @@ deterministic architectures (``unet``, ``resunet``, ``attention_unet``,
 This module wires up the NLL-variant builders instead, reusing
 ``scripts.trainer.get_callbacks`` (generic checkpoint/early-stopping/
 TensorBoard setup, not specific to any architecture or loss). Since
-``fixing.md`` #10, `unet_nll`/`resunet_nll`/`attention_unet_nll` train
-with a single Laplace-beta NLL loss (:func:`scripts.losses.laplace_nll_loss`,
-the ``"laplace_nll"`` default below); `efficientnet_unet_nll` still trains
-with both Gaussian NLL variants (``"gaussian_nll"``/``"beta_nll"``) until
-Round 2 collapses it the same way. There is no NLL counterpart of the
-deterministic advanced loss.
+``fixing.md`` #10, every NLL architecture — ``unet_nll``/``resunet_nll``/
+``attention_unet_nll`` (Round 1) and, since Round 2, ``efficientnet_unet_nll``
+too — trains with a single Laplace-beta NLL loss
+(:func:`scripts.losses.laplace_nll_loss`, the ``"laplace_nll"`` default
+below), collapsing the previous per-architecture ``gaussian_nll``/
+``beta_nll`` checkpoint split into one NLL checkpoint per architecture.
+``"gaussian_nll"``/``"beta_nll"`` remain registered in ``_LOSSES_NLL`` (they
+are still exercised directly by ``scripts.losses``/``scripts.calibration``
+unit tests and remain selectable via ``loss_name=`` for anyone re-evaluating
+an old pre-Round-2 checkpoint), but no architecture defaults to them anymore.
+There is no NLL counterpart of the deterministic advanced loss.
 """
 
 from pathlib import Path
@@ -32,15 +37,24 @@ _BUILDERS_NLL = {
     "resunet_nll": build_resunet_nll,
     "attention_unet_nll": build_attention_unet_nll,
     "efficientnet_unet_nll": build_efficientnet_unet_nll,
+    # Phase-2 (unfrozen-encoder) fine-tuning checkpoint, the NLL sibling of
+    # trainer.py's "efficientnet_unet_ft" (fixing.md #6, Round 2). Same
+    # builder as "efficientnet_unet_nll", saved under its own `arch_name`
+    # (`models/nll/efficientnet_unet_nll_ft/`) so the frozen-encoder NLL
+    # baseline is never overwritten. Implemented symmetrically with the
+    # deterministic `_ft` variant since `train_single.py --init-from` makes
+    # it a small marginal addition, not because Round 2 requires it.
+    "efficientnet_unet_nll_ft": build_efficientnet_unet_nll,
 }
 
 # Registered NLL loss constructors, keyed by name. All take the same
 # (min_log_var, max_log_var, beta) signature so callers can select one by
 # name without caring which extra arguments it actually uses — `beta` is
 # ignored by "gaussian_nll" and meaningful for "beta_nll"/"laplace_nll".
-# "laplace_nll" is the default (fixing.md #10) for unet_nll/resunet_nll/
-# attention_unet_nll; "gaussian_nll"/"beta_nll" remain registered because
-# efficientnet_unet_nll still trains with both until Round 2.
+# "laplace_nll" is the default (fixing.md #10) for every NLL architecture,
+# including efficientnet_unet_nll since Round 2. "gaussian_nll"/"beta_nll"
+# remain registered for re-evaluating older checkpoints trained before that
+# collapse, not because any architecture still defaults to them.
 _LOSSES_NLL = {
     "gaussian_nll": lambda min_log_var, max_log_var, beta: gaussian_nll_loss(
         min_log_var=min_log_var, max_log_var=max_log_var
@@ -80,7 +94,9 @@ def get_model_nll(arch_name: str, **kwargs: object) -> tf.keras.Model:
     arch_name : str
         One of the registered NLL architectures: ``"unet_nll"``,
         ``"resunet_nll"``, ``"attention_unet_nll"``,
-        ``"efficientnet_unet_nll"``.
+        ``"efficientnet_unet_nll"``, ``"efficientnet_unet_nll_ft"`` (the
+        Round 2 two-phase fine-tuning checkpoint — same builder as
+        ``"efficientnet_unet_nll"``, see ``_BUILDERS_NLL``).
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``, ``log_var_min``, ``log_var_max``).
@@ -134,10 +150,10 @@ def compile_model_nll(
     loss_name : str
         Which NLL loss to compile with — one of :data:`NLL_LOSSES`.
         Default ``"laplace_nll"`` (:func:`scripts.losses.laplace_nll_loss`,
-        ``fixing.md`` #10) — the current default for `unet_nll`,
-        `resunet_nll`, `attention_unet_nll`. Pass ``"gaussian_nll"``/
-        ``"beta_nll"`` explicitly for `efficientnet_unet_nll`, which still
-        trains with the Gaussian losses until Round 2.
+        ``fixing.md`` #10) — the current default for every NLL architecture,
+        including `efficientnet_unet_nll`/`efficientnet_unet_nll_ft` since
+        Round 2. Pass ``"gaussian_nll"``/``"beta_nll"`` explicitly only to
+        re-evaluate an older checkpoint trained before that collapse.
     beta : float
         Weighting exponent, used by ``"beta_nll"``/``"laplace_nll"``,
         ignored by ``"gaussian_nll"``.

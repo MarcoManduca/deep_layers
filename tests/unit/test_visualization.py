@@ -10,6 +10,7 @@ from matplotlib.figure import Figure  # noqa: E402
 
 from scripts.visualization import (  # noqa: E402
     plot_delta,
+    plot_gt_signal_gallery,
     plot_predictions,
     plot_sample_pairs,
     plot_training_curves,
@@ -51,5 +52,24 @@ def test_plot_training_curves_handles_train_and_val_keys() -> None:
 
 def test_plot_training_curves_handles_single_metric() -> None:
     fig = plot_training_curves({"loss": [0.5, 0.3]})
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_plot_gt_signal_gallery_returns_figure() -> None:
+    mask = np.random.rand(16, 16) > 0.5
+    signals = {
+        "unet [raw delta]": np.random.rand(16, 16),
+        "unet [structural delta]": np.random.rand(16, 16),
+    }
+    fig = plot_gt_signal_gallery(_rgb(), _ir(), mask, signals)
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_plot_gt_signal_gallery_handles_constant_signal() -> None:
+    mask = np.zeros((16, 16), dtype=bool)
+    signals = {"unet [raw delta]": np.zeros((16, 16))}
+    fig = plot_gt_signal_gallery(_rgb(), _ir(), mask, signals)
     assert isinstance(fig, Figure)
     plt.close(fig)

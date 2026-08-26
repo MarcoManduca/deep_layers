@@ -18,6 +18,14 @@ Writes the checkpoint to ``<model_dir>/<arch>/best_model.keras`` (via
 :func:`scripts.trainer.get_callbacks`, unchanged) and the Keras
 ``History.history`` dict to ``<model_dir>/<arch>/history.json``, since a
 dict can cross the process boundary only via a file, not in memory.
+
+Also supports ``fixing.md`` #6's two-phase EfficientNet fine-tuning: pass
+``--init-from <phase-1-checkpoint>`` to warm-start this process's model from
+an existing checkpoint's weights before compiling (e.g. phase 1 trains
+``efficientnet_unet`` with the encoder frozen; phase 2 trains
+``efficientnet_unet_ft`` with ``--kwargs '{"freeze_encoder": false}'
+--init-from models/deterministic/efficientnet_unet/best_model.keras``, and
+usually a lower ``--lr``, ``settings.FINETUNE_LEARNING_RATE``).
 """
 
 import argparse
@@ -91,29 +99,59 @@ def main() -> None:
         help="NLL loss name (only used with --nll). One of "
         "scripts.trainer_nll.NLL_LOSSES.",
     )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=None,
+        help="Adam learning rate. Defaults to settings.LEARNING_RATE; pass "
+        "settings.FINETUNE_LEARNING_RATE explicitly for a phase-2 "
+        "fine-tuning run (fixing.md #6).",
+    )
+    parser.add_argument(
+        "--init-from",
+        type=Path,
+        default=None,
+        help="Path to a .keras checkpoint to warm-start this model's weights "
+        "from, before compiling (fixing.md #6's two-phase EfficientNet "
+        "fine-tuning: phase 2 builds with --kwargs "
+        '\'{"freeze_encoder": false}\' and initializes from phase 1\'s '
+        "checkpoint here). The architecture must be unchanged from the "
+        "checkpoint's — only `trainable` differs between the two phases — "
+        "so a plain tf.keras.Model.load_weights (matched by layer name/"
+        "order, not the full model config) is sufficient; unlike "
+        "scripts.trainer.load_model, this does not require the checkpoint "
+        "to be recompiled first.",
+    )
     args = parser.parse_args()
 
     set_global_seed()
     train_ds, val_ds = _build_datasets()
     builder_kwargs = json.loads(args.kwargs)
+    lr = args.lr if args.lr is not None else settings.LEARNING_RATE
 
     print(f"\n{'=' * 60}\n  Architecture: {args.arch}\n{'=' * 60}")
 
     if args.nll:
         model = get_model_nll(args.arch, **builder_kwargs)
+        if args.init_from is not None:
+            print(f"Initializing weights from {args.init_from}")
+            model.load_weights(str(args.init_from))
         model = compile_model_nll(
             model,
-            lr=settings.LEARNING_RATE,
+            lr=lr,
             loss_name=args.loss_name,
             beta=settings.NLL_BETA,
             weight_decay=settings.WEIGHT_DECAY,
         )
     else:
         model = get_model(args.arch, **builder_kwargs)
+        if args.init_from is not None:
+            print(f"Initializing weights from {args.init_from}")
+            model.load_weights(str(args.init_from))
         model = compile_model(
             model,
             args.arch,
-            lr=settings.LEARNING_RATE,
+            lr=lr,
             loss_alpha=settings.LOSS_ALPHA,
             weight_decay=settings.WEIGHT_DECAY,
         )

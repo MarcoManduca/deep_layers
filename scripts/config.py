@@ -108,15 +108,36 @@ class Settings(BaseSettings):
         split — never at evaluation or inference.
     NLL_LOG_VAR_MIN : float
         Lower clip bound for the second output channel of every
-        heteroscedastic model, for numerical stability. Reused as-is for
-        two different distributional interpretations of that channel:
-        Gaussian log-variance (``efficientnet_unet_nll``, until Round 2)
-        and Laplace log-scale (``unet_nll``/``resunet_nll``/
-        ``attention_unet_nll``, ``scripts.losses.laplace_nll_loss``) — the
-        ``[-6, 6]`` range is a reasonable clip bound for either, so the
-        field is shared rather than duplicated per distribution.
+        heteroscedastic model, for numerical stability. Named for its
+        original Gaussian log-variance interpretation, but since
+        ``fixing.md`` #10 (Round 2) every NLL architecture — including
+        ``efficientnet_unet_nll`` — is trained as a Laplace log-scale
+        (``scripts.losses.laplace_nll_loss``) instead; the field is kept
+        under its original name rather than renamed to ``NLL_LOG_SCALE_MIN``
+        to avoid an unrelated rename churning every call site, and the
+        ``[-6, 6]`` range remains a reasonable clip bound for a log-scale
+        channel (it was never Gaussian-specific numerically, just in name).
     NLL_LOG_VAR_MAX : float
         Upper clip bound, see above.
+    FINETUNE_LEARNING_RATE : float
+        Adam learning rate for phase 2 of EfficientNet's two-phase
+        fine-tuning (``fixing.md`` #6, Round 2): once the decoder has
+        converged against the frozen pretrained encoder (phase 1, plain
+        ``LEARNING_RATE``), phase 2 unfreezes the encoder
+        (``freeze_encoder=False``) and continues training the whole
+        network end-to-end. Conventionally 10-100x smaller than the
+        from-scratch rate to avoid destroying the pretrained ImageNet
+        features with large gradient steps early in phase 2; ``1e-5``
+        (10x below ``LEARNING_RATE``) is a conservative choice within that
+        range, erring toward preserving the pretrained weights rather than
+        risking catastrophic forgetting.
+    FINETUNE_EPOCHS : int
+        Maximum epochs for phase 2. Phase 2 starts from an already
+        converged decoder, not from scratch, so it needs a much shorter
+        budget than ``EPOCHS`` — it is a refinement pass over already-good
+        weights, not a full training run. Early stopping
+        (``EARLY_STOPPING_PATIENCE``) still governs the actual stopping
+        point; this is only the upper bound.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -169,6 +190,9 @@ class Settings(BaseSettings):
 
     NLL_LOG_VAR_MIN: float = -6.0
     NLL_LOG_VAR_MAX: float = 6.0
+
+    FINETUNE_LEARNING_RATE: float = 1e-5
+    FINETUNE_EPOCHS: int = 20
 
 
 settings = Settings()

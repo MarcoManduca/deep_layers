@@ -418,6 +418,19 @@ def test_efficientnet_unet_nll_is_registered_without_building_it() -> None:
     assert "efficientnet_unet_nll" in _BUILDERS_NLL
 
 
+def test_efficientnet_unet_nll_ft_is_registered_without_building_it() -> None:
+    # fixing.md #6 (Round 2): the NLL sibling of trainer.py's
+    # "efficientnet_unet_ft" — same builder as "efficientnet_unet_nll",
+    # kept under its own arch_name so it gets its own checkpoint directory.
+    from scripts.trainer_nll import _BUILDERS_NLL
+
+    assert "efficientnet_unet_nll_ft" in _BUILDERS_NLL
+    assert (
+        _BUILDERS_NLL["efficientnet_unet_nll_ft"]
+        is _BUILDERS_NLL["efficientnet_unet_nll"]
+    )
+
+
 def test_load_model_nll_raises_when_checkpoint_missing(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="No checkpoint found"):
         load_model_nll("attention_unet_nll", model_dir=tmp_path)
@@ -426,9 +439,10 @@ def test_load_model_nll_raises_when_checkpoint_missing(tmp_path: Path) -> None:
 def test_compile_model_nll_uses_laplace_nll_loss_by_default(
     dummy_model_nll: tf.keras.Model,
 ) -> None:
-    # fixing.md #10: laplace_nll is the default for unet_nll/resunet_nll/
-    # attention_unet_nll; efficientnet_unet_nll must request
-    # "gaussian_nll"/"beta_nll" explicitly until Round 2.
+    # fixing.md #10 (Round 2): laplace_nll is now the default for every NLL
+    # architecture, including efficientnet_unet_nll; "gaussian_nll"/
+    # "beta_nll" remain selectable via loss_name= only to re-evaluate an
+    # older pre-Round-2 checkpoint.
     compile_model_nll(dummy_model_nll)
     assert dummy_model_nll.loss.__name__ == "laplace_nll_loss"
 

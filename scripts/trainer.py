@@ -7,7 +7,7 @@ import tensorflow as tf
 from scripts.attention_unet import build_attention_unet
 from scripts.config import settings
 from scripts.efficientnet_unet import build_efficientnet_unet
-from scripts.losses import combined_loss, combined_loss_advanced
+from scripts.losses import combined_loss
 from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
@@ -21,29 +21,14 @@ _BUILDERS = {
     "resunet": build_resunet,
     "attention_unet": build_attention_unet,
     "efficientnet_unet": build_efficientnet_unet,
+    # Phase-2 (unfrozen-encoder) fine-tuning checkpoint (fixing.md #6,
+    # Round 2): same builder as "efficientnet_unet", saved under its own
+    # `arch_name` (`models/deterministic/efficientnet_unet_ft/`) so the
+    # frozen-encoder baseline is never overwritten. `train_single.py`
+    # passes `--kwargs '{"freeze_encoder": false}' --init-from
+    # <efficientnet_unet checkpoint>` to build and warm-start this variant.
+    "efficientnet_unet_ft": build_efficientnet_unet,
 }
-
-# Single source of truth for which architectures train with the advanced
-# (MAE + Laplacian + FFT) loss. Both training and checkpoint loading derive
-# the loss from here, so the two paths can never silently disagree.
-_ADVANCED_LOSS_ARCHS = frozenset({"efficientnet_unet"})
-
-
-def uses_advanced_loss(arch_name: str) -> bool:
-    """Return whether ``arch_name`` is trained with the advanced loss.
-
-    Parameters
-    ----------
-    arch_name : str
-        Architecture identifier.
-
-    Returns
-    -------
-    bool
-        ``True`` if the architecture uses
-        :func:`scripts.losses.combined_loss_advanced`.
-    """
-    return arch_name in _ADVANCED_LOSS_ARCHS
 
 
 def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
@@ -53,7 +38,10 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
     ----------
     arch_name : str
         One of ``"unet"``, ``"unet_v2"``, ``"unet_restormer"``,
-        ``"resunet"``, ``"attention_unet"``, ``"efficientnet_unet"``.
+        ``"resunet"``, ``"attention_unet"``, ``"efficientnet_unet"``,
+        ``"efficientnet_unet_ft"`` (the Round 2 two-phase fine-tuning
+        checkpoint — same builder as ``"efficientnet_unet"``, see
+        ``_BUILDERS``).
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``).
@@ -83,24 +71,33 @@ def compile_model(
     weight_decay: float = settings.WEIGHT_DECAY,
     clipvalue: float = settings.GRADIENT_CLIP_VALUE,
 ) -> tf.keras.Model:
-    """Compile a model with Adam and the loss selected for its architecture.
+    """Compile a model with Adam and the unified ``combined_loss``.
 
-    The loss is chosen from :func:`uses_advanced_loss` — the single source
-    of truth — so callers never pass a manual ``advanced_loss`` flag that
-    could drift from training. Advanced-loss weights are read from
-    ``settings`` (``ADV_LOSS_ALPHA``/``BETA``/``GAMMA``, ``LAPLACIAN_LEVELS``).
+    Every deterministic architecture — including ``efficientnet_unet``/
+    ``efficientnet_unet_ft`` since Round 2 (``fixing.md`` #9) — now trains
+    with the same :func:`scripts.losses.combined_loss`
+    (``0.16 * Charbonnier + 0.84 * (1 - MS-SSIM)``). Before Round 2,
+    ``efficientnet_unet`` used a separate ``combined_loss_advanced`` (MAE +
+    Laplacian pyramid + FFT, no perceptual term); that function is still
+    defined and unit-tested in ``scripts/losses.py`` but is no longer
+    selected by any architecture here — dropping its Laplacian-pyramid/FFT
+    terms in favor of a shared perceptual (MS-SSIM) loss is a deliberate
+    trade-off documented in ``fixing.md`` §2/§4, not an oversight.
+    ``arch_name`` is kept as a parameter (rather than dropped) so callers
+    don't need to change, and so a future architecture-specific loss could
+    still be reintroduced here without touching every call site.
 
     Parameters
     ----------
     model : tf.keras.Model
         Uncompiled (or previously compiled) model.
     arch_name : str
-        Architecture identifier; determines which loss is applied.
+        Architecture identifier (unused for loss selection now that every
+        architecture shares ``combined_loss``; kept for API stability).
     lr : float
         Initial Adam learning rate.
     loss_alpha : float
         Charbonnier weight in :func:`scripts.losses.combined_loss`.
-        Ignored for architectures that use the advanced loss.
     weight_decay : float
         L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
     clipvalue : float
@@ -114,15 +111,7 @@ def compile_model(
     tf.keras.Model
         Compiled model (modified in-place and returned).
     """
-    if uses_advanced_loss(arch_name):
-        loss_fn = combined_loss_advanced(
-            alpha=settings.ADV_LOSS_ALPHA,
-            beta=settings.ADV_LOSS_BETA,
-            gamma=settings.ADV_LOSS_GAMMA,
-            laplacian_levels=settings.LAPLACIAN_LEVELS,
-        )
-    else:
-        loss_fn = combined_loss(alpha=loss_alpha)
+    loss_fn = combined_loss(alpha=loss_alpha)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(
             learning_rate=lr, weight_decay=weight_decay, clipvalue=clipvalue
@@ -238,21 +227,21 @@ def load_model(
     """Load the best checkpoint for an architecture and recompile it.
 
     Loading with ``compile=False`` avoids custom-object registration
-    issues; the model is recompiled with the same loss and metrics used
-    during training. The loss is derived from ``arch_name`` via
-    :func:`uses_advanced_loss`, so it always matches training.
+    issues; the model is recompiled with :func:`compile_model`, i.e. the
+    same unified ``combined_loss`` every architecture now trains with.
 
     Parameters
     ----------
     arch_name : str
-        Architecture identifier.
+        Architecture identifier — any ``_BUILDERS`` key, including
+        ``"efficientnet_unet_ft"`` (Round 2 two-phase fine-tuning
+        checkpoint, ``fixing.md`` #6).
     model_dir : Path
         Root directory where checkpoints are stored.
     lr : float
         Learning rate for recompilation.
     loss_alpha : float
-        Charbonnier weight for recompilation. Ignored for architectures
-        that use the advanced loss.
+        Charbonnier weight for recompilation.
     weight_decay : float
         L2 weight decay for recompilation. Irrelevant for
         ``evaluate()``/``predict()``, only affects the optimizer state.

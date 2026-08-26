@@ -23,8 +23,8 @@ useful if it is *calibrated* **and** *sharp*.
   to provide. ``dispersion == 0`` means exactly that failure.
 
 :func:`mean_gaussian_nll` (and its Laplace counterpart,
-:func:`mean_laplace_nll`, for `unet_nll`/`resunet_nll`/`attention_unet_nll`
-since ``fixing.md`` #10) is the one number that folds accuracy and
+:func:`mean_laplace_nll`, for every NLL architecture since ``fixing.md``
+#10 unified them all on Laplace) is the one number that folds accuracy and
 calibration together (a proper scoring rule), and is the natural
 tie-breaker when ``mae``/``ssim``/``psnr`` and the calibration metrics
 disagree. Every other function here (``coverage_probability``,
@@ -549,12 +549,15 @@ def evaluate_calibration(
     Every metric here except ``nll`` treats ``sigma`` as a plain standard
     deviation and is distribution-agnostic; only the NLL term's formula
     differs structurally between Gaussian and Laplace, so ``distribution``
-    dispatches only that one term. Pass the correct ``sigma`` for either
-    case: the Gaussian formula (``exp(0.5 * log_var)``) for
-    `efficientnet_unet_nll` (until Round 2), or
-    :func:`laplace_sigma_from_scale` (``b * sqrt(2)``, **not**
-    ``exp(0.5 * log_b)``) for `unet_nll`/`resunet_nll`/
-    `attention_unet_nll` (``fixing.md`` #10).
+    dispatches only that one term. Since ``fixing.md`` #10 (Round 2), every
+    live NLL checkpoint (`unet_nll`/`resunet_nll`/`attention_unet_nll`/
+    `efficientnet_unet_nll`) is trained as Laplace, so ``distribution=
+    "laplace"`` with :func:`laplace_sigma_from_scale` (``b * sqrt(2)``,
+    **not** ``exp(0.5 * log_b)``) is the correct choice for all of them.
+    ``distribution="gaussian"`` (the default, kept for backward
+    compatibility and exercised directly by ``tests/unit/test_calibration.py``)
+    remains available only for scoring an older checkpoint trained before
+    that collapse, using the Gaussian formula ``exp(0.5 * log_var)``.
 
     Parameters
     ----------

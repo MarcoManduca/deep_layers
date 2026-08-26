@@ -219,6 +219,17 @@ def combined_loss_advanced(
     provides richer features; the additional frequency-domain terms
     recover the high-frequency detail that MAE tends to suppress.
 
+    **No longer used by ``scripts/trainer.py``** as of ``fixing.md`` #9
+    (Round 2): ``efficientnet_unet``/``efficientnet_unet_ft`` now train with
+    the same unified :func:`combined_loss` as every other deterministic
+    architecture, which gives this architecture a perceptual (MS-SSIM) term
+    for the first time — at the deliberate cost of dropping this function's
+    Laplacian-pyramid/FFT terms, a real trade-off worth confirming
+    empirically rather than assuming as a pure improvement (see ``fixing.md``
+    §4). Left defined and unit-tested here (not deleted) since it remains a
+    valid, independently useful loss function — just no longer wired into
+    any architecture's default training path.
+
     The loss is defined as::
 
         loss = alpha * MAE + beta * Laplacian + gamma * FFT
@@ -377,10 +388,10 @@ def laplace_nll_loss(
     ``beta = 0`` recovers the plain Laplace NLL exactly.
 
     This loss replaces both :func:`gaussian_nll_loss` and
-    :func:`beta_gaussian_nll_loss` for `unet_nll`, `resunet_nll`, and
-    `attention_unet_nll` — one NLL loss per architecture instead of two,
-    collapsing the `nll_gaussian`/`nll_beta` checkpoint split for these
-    three. `efficientnet_unet_nll` keeps the Gaussian losses until Round 2.
+    :func:`beta_gaussian_nll_loss` for every NLL architecture — `unet_nll`,
+    `resunet_nll`, `attention_unet_nll` (Round 1) and, since Round 2,
+    `efficientnet_unet_nll` too — one NLL loss per architecture instead of
+    two, collapsing the `nll_gaussian`/`nll_beta` checkpoint split entirely.
 
     Parameters
     ----------

@@ -5,27 +5,7 @@ from pathlib import Path
 import pytest
 import tensorflow as tf
 
-from scripts.trainer import (
-    compile_model,
-    get_model,
-    load_model,
-    uses_advanced_loss,
-)
-
-
-@pytest.mark.parametrize(
-    "arch_name, expected",
-    [
-        ("efficientnet_unet", True),
-        ("unet", False),
-        ("resunet", False),
-        ("attention_unet", False),
-    ],
-)
-def test_uses_advanced_loss_only_for_efficientnet(
-    arch_name: str, expected: bool
-) -> None:
-    assert uses_advanced_loss(arch_name) is expected
+from scripts.trainer import _BUILDERS, compile_model, get_model, load_model
 
 
 def test_get_model_raises_on_unknown_architecture() -> None:
@@ -38,15 +18,28 @@ def test_load_model_raises_when_checkpoint_missing(tmp_path: Path) -> None:
         load_model("unet", model_dir=tmp_path)
 
 
-def test_compile_model_uses_advanced_loss_for_efficientnet(
-    dummy_model: tf.keras.Model,
-) -> None:
-    compile_model(dummy_model, "efficientnet_unet")
-    assert dummy_model.loss.__name__ == "combined_loss_advanced"
+def test_efficientnet_unet_ft_is_registered_without_building_it() -> None:
+    # build_efficientnet_unet(_ft) downloads ImageNet weights; only check
+    # registration here, same reasoning as efficientnet_unet's lack of a
+    # dedicated builder test (see tests/unit/test_nll.py's _OTHER_BUILDERS
+    # comment for the NLL counterpart). fixing.md #6 (Round 2): the phase-2
+    # fine-tuning checkpoint shares efficientnet_unet's builder, keyed under
+    # its own arch_name so get_callbacks/load_model give it its own
+    # checkpoint directory (models/deterministic/efficientnet_unet_ft/).
+    assert "efficientnet_unet_ft" in _BUILDERS
+    assert _BUILDERS["efficientnet_unet_ft"] is _BUILDERS["efficientnet_unet"]
 
 
-def test_compile_model_uses_combined_loss_for_plain_unet(
-    dummy_model: tf.keras.Model,
+@pytest.mark.parametrize(
+    "arch_name",
+    ["unet", "resunet", "attention_unet", "efficientnet_unet", "efficientnet_unet_ft"],
+)
+def test_compile_model_uses_combined_loss_for_every_architecture(
+    arch_name: str, dummy_model: tf.keras.Model
 ) -> None:
-    compile_model(dummy_model, "unet")
+    # fixing.md #9 (Round 2): efficientnet_unet no longer gets the separate
+    # combined_loss_advanced (MAE + Laplacian + FFT) — every deterministic
+    # architecture, including the EfficientNet ones, now shares the same
+    # unified combined_loss.
+    compile_model(dummy_model, arch_name)
     assert dummy_model.loss.__name__ == "combined_loss"
