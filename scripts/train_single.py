@@ -1,8 +1,9 @@
 """Train exactly one architecture, in its own process, and exit.
 
 Invoked as a subprocess (one call per architecture) by ``020_training.ipynb``,
-``021_training_nll.ipynb``, and ``023_training_variants.ipynb`` instead of
-training multiple models in a loop within a single notebook kernel.
+``021_training_nll.ipynb``, ``023_training_variants.ipynb``, and
+``024_training_beta_sweep.ipynb`` (one call per *beta*, same architecture)
+instead of training multiple models in a loop within a single notebook kernel.
 
 Why a subprocess: training several Keras models back-to-back in one Python
 process on this project's hardware (Apple Silicon, ``tensorflow-metal``)
@@ -26,6 +27,12 @@ an existing checkpoint's weights before compiling (e.g. phase 1 trains
 ``efficientnet_unet_ft`` with ``--kwargs '{"freeze_encoder": false}'
 --init-from models/deterministic/efficientnet_unet/best_model.keras``, and
 usually a lower ``--lr``, ``settings.FINETUNE_LEARNING_RATE``).
+
+``--nll-beta`` overrides ``settings.NLL_BETA`` for one run, so a beta sweep
+(``024_training_beta_sweep.ipynb``) records each run's beta in the command
+that launched it instead of in ambient config, where it would not survive
+into the checkpoint. Point ``--model-dir`` at a per-beta directory so the
+runs do not overwrite each other.
 """
 
 import argparse
@@ -100,6 +107,16 @@ def main() -> None:
         "scripts.trainer_nll.NLL_LOSSES.",
     )
     parser.add_argument(
+        "--nll-beta",
+        type=float,
+        default=None,
+        help="Beta exponent of the beta-weighted NLL losses (only used with "
+        "--nll, meaningful for 'beta_nll'/'laplace_nll' and ignored by "
+        "'gaussian_nll'). Defaults to settings.NLL_BETA. Pass it explicitly "
+        "to sweep beta without touching ambient config, so the value a run "
+        "used is recorded in the command that launched it.",
+    )
+    parser.add_argument(
         "--lr",
         type=float,
         default=None,
@@ -114,7 +131,7 @@ def main() -> None:
         help="Path to a .keras checkpoint to warm-start this model's weights "
         "from, before compiling (fixing.md #6's two-phase EfficientNet "
         "fine-tuning: phase 2 builds with --kwargs "
-        '\'{"freeze_encoder": false}\' and initializes from phase 1\'s '
+        "'{\"freeze_encoder\": false}' and initializes from phase 1's "
         "checkpoint here). The architecture must be unchanged from the "
         "checkpoint's — only `trainable` differs between the two phases — "
         "so a plain tf.keras.Model.load_weights (matched by layer name/"
@@ -128,8 +145,12 @@ def main() -> None:
     train_ds, val_ds = _build_datasets()
     builder_kwargs = json.loads(args.kwargs)
     lr = args.lr if args.lr is not None else settings.LEARNING_RATE
+    nll_beta = args.nll_beta if args.nll_beta is not None else settings.NLL_BETA
 
-    print(f"\n{'=' * 60}\n  Architecture: {args.arch}\n{'=' * 60}")
+    banner = (
+        f"{args.arch} ({args.loss_name}, beta={nll_beta})" if args.nll else args.arch
+    )
+    print(f"\n{'=' * 60}\n  Architecture: {banner}\n{'=' * 60}")
 
     if args.nll:
         model = get_model_nll(args.arch, **builder_kwargs)
@@ -140,7 +161,7 @@ def main() -> None:
             model,
             lr=lr,
             loss_name=args.loss_name,
-            beta=settings.NLL_BETA,
+            beta=nll_beta,
             weight_decay=settings.WEIGHT_DECAY,
         )
     else:
