@@ -43,3 +43,6 @@ skills-lock.json
 
 # Bibliography
 biblio/
+
+# zip files
+*.zip
