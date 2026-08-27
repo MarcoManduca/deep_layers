@@ -117,6 +117,31 @@ acquisition (the true ceiling); conditional normalising flow.
 
 **Not worth it:** another architecture; more patches of the same works.
 
+## Update — C5 (2026-08-27): the signal-processing avenue is closed
+
+`C5_signal_sharpening.ipynb` tried the two training-free levers above (points 1–2 of
+"a completely different approach"). Result: **nothing beats `structural delta`.**
+
+- Multi-scale band-pass of the residual *lowers* AUROC (best band −0.04, most −0.06 to
+  −0.12) while inflating stroke coherence — it amplifies oriented structure in general,
+  not the underdrawing. Coherence is only a valid tie-breaker between signals of
+  comparable AUROC.
+- PCA / ICA on `[R,G,B,IR]`: no component is operationally usable — the informative one
+  is a different index on each painting (`pca c3`: 0.82 on GT01, 0.43 on GT03).
+- **The one carry-forward finding**: `linreg residual` — a parameter-free per-image OLS
+  of `IR ~ [R,G,B,1]`, no deep model — scores **0.824 on GT01** (the single best
+  per-image AUROC in the experiment), then collapses to 0.55 / 0.51 on GT02 / GT03.
+  GT01's underdrawing is largely *linearly* separable from RGB (the deep `μ` was not
+  needed there); GT02/GT03's are subtle enough that only the real IR reveals them.
+  **This is direct evidence that the deep model is not the limiting factor** — a trivial
+  linear baseline is in the same ballpark on this data. The bottleneck is the
+  data/problem, per this document's thesis.
+
+Detection signal is therefore fixed as `structural delta` (deterministic) /
+`structural z` (NLL). The remaining levers with real upside are the ones this document
+already lists as out-of-scope-for-closing: more GT annotations, an IR inpainting model,
+and multispectral acquisition.
+
 ## Framing note
 
 AUROC ~0.70 on 3 masks, framed correctly, may already be a defensible course-project
