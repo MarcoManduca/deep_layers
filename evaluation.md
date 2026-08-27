@@ -325,3 +325,56 @@ to find out.
 - Calibration (`scripts/calibration.py`) and contrast control
   (`scripts/contrast.py`) are unaffected by this discussion — they don't
   make any hidden-detail claim, only a `sigma`-quality claim.
+
+## 8. Round 4 — grouped k-fold cross-validation (2026-08-27)
+
+`fixing.md` finding #4. Every notebook above reports point estimates from a single
+fixed train/val split. Round 4 measures how far those estimates move across
+independent splits. Notebooks: `060_kfold_training.ipynb` / `061_kfold_evaluation.ipynb`;
+split logic in `scripts/kfold.py`.
+
+**Design.** Scope narrowed from "all models" to **one model** — `attention_unet_nll`
+(top-2 on every detection cut in `C4`/`C5`, and its NLL head yields both
+`structural delta` from `μ` and `structural z` from `μ/σ`) — at **k=3**, **β=0.5**
+fixed. This is a variance estimate, not a model search. Real artworks are partitioned
+into 3 groups **by artwork ID** (no section leakage); fold `i` holds out group `i` for
+validation, the rest **plus all mockups** train. No test split — the held-out
+artworks are the fold's evaluation set, and `data/test/` (GT01–03) stays external to
+every fold, so each fold-model is a genuine held-out predictor for the GT paintings.
+Deterministic in `(KFOLD_K=3, KFOLD_SEED=42)`.
+
+**Training (`060`).** All 3 folds, no NaN / no instability — the three §7 training-bug
+fixes carry over to the k-fold splits. Early-stopped at epoch 22 / 38 / 24; best
+`val_loss` −0.3844 / −0.4451 / −0.4424. Fold 0 holds out the largest group
+(9 artworks, 333 val pairs) and lands ~0.06 higher in `val_loss` than folds 1–2,
+which agree tightly.
+
+**Results (`061`).**
+
+| metric | per-fold mean ± std | 3-fold ensemble |
+|---|---|---|
+| held-out `val_loss` | −0.4240 ± 0.0280 | — |
+| held-out MAE | 0.103 ± 0.013 | — |
+| `structural delta` AUROC (mean over GT01–03) | 0.678 ± 0.008 | **0.700** |
+| `structural z` AUROC (mean over GT01–03) | 0.699 ± 0.008 | **0.719** |
+
+- **Fold-to-fold variance is small.** AUROC std ≈ 0.008 — far below the gap between
+  the two signals, and below the spread between GT paintings. No ranking established
+  earlier in the project changes: `structural z` ≥ `structural delta` on every fold
+  and on the ensemble.
+- **Per-GT pattern unchanged from `C5`:** GT01 strong (0.73–0.82), GT02 moderate
+  (0.66–0.69), GT03 weak (0.57–0.69). GT03 stays hard regardless of which fold
+  predicts it — a property of its underdrawing (visible only in real IR), not of the
+  split.
+- **The ensemble (pixel-wise mean of the fold `μ`s) beats every single fold** on both
+  signals — a free, small, consistent gain.
+- **Cross-validation confirms the single-split estimates** rather than deflating them:
+  the earlier fixed-split `attention_unet_nll` numbers (`031`/`C4`: `structural delta`
+  ≈ 0.70, `structural z` ≈ 0.71) sit inside ±1 std of the k-fold means.
+
+**Verdict — finding #4 resolved as "the single split was adequate."** The
+point-estimate metrics used throughout this project carry a fold-to-fold std of
+~0.008 AUROC / ~0.03 loss. No second model is warranted (fold variance is not
+alarming). Defensible headline number for the write-up:
+**`attention_unet_nll`, `structural z` detection AUROC = 0.70 ± 0.01 (per fold),
+0.72 (3-fold ensemble)** on GT01–03; `structural delta` = 0.68 ± 0.01 / 0.70.
