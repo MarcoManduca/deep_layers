@@ -74,7 +74,15 @@ class Settings(BaseSettings):
         Epochs with no ``val_loss`` improvement before training stops.
     EARLY_STOPPING_MIN_DELTA : float
         Minimum ``val_loss`` change to count as an improvement for
-        early stopping.
+        early stopping. ``5e-4`` (not ``0.0``): observed on `unet_v2`'s
+        Round 1/3 run (``fixing.md`` §7.1) — after `ReduceLROnPlateau`'s
+        one LR drop, both train and val loss went flat (~0.003 total
+        change over 14 epochs) while `0.0` let noise-level, sub-1e-3
+        wiggles in the ~21-batch validation set keep resetting the
+        patience counter, so training ran to the full `EPOCHS` cap well
+        past the point of real improvement. `ModelCheckpoint` still saves
+        the true best regardless of this value — raising it only affects
+        when *training stops*, not what gets saved.
     EARLY_STOPPING_RESTORE_BEST_WEIGHTS : bool
         Whether to restore the best-epoch weights in memory when training
         stops. Safe to leave ``False`` as long as evaluation always
@@ -177,7 +185,7 @@ class Settings(BaseSettings):
     NLL_BETA: float = 0.5
 
     EARLY_STOPPING_PATIENCE: int = 20
-    EARLY_STOPPING_MIN_DELTA: float = 0.0
+    EARLY_STOPPING_MIN_DELTA: float = 5e-4
     EARLY_STOPPING_RESTORE_BEST_WEIGHTS: bool = False
     REDUCE_LR_FACTOR: float = 0.25
     REDUCE_LR_PATIENCE: int = 6
