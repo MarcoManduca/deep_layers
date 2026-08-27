@@ -33,6 +33,10 @@ usually a lower ``--lr``, ``settings.FINETUNE_LEARNING_RATE``).
 that launched it instead of in ambient config, where it would not survive
 into the checkpoint. Point ``--model-dir`` at a per-beta directory so the
 runs do not overwrite each other.
+
+``--fold N --kfold-k K`` switches the train/val split to
+``scripts.kfold.fold_split`` for ``fixing.md`` #4's Round 4 cross-validation
+(``060_kfold_training.ipynb`` — one subprocess per fold, each resumable).
 """
 
 import argparse
@@ -45,27 +49,45 @@ from scripts.dataset import (
     load_image_pairs,
     mockup_aware_train_val_test_split,
 )
+from scripts.kfold import fold_split
 from scripts.reproducibility import set_global_seed
 from scripts.trainer import compile_model, get_callbacks, get_model
 from scripts.trainer_nll import compile_model_nll, get_model_nll
 
 
-def _build_datasets():
-    """Rebuild the artwork-and-mockups train/val split and datasets.
+def _build_datasets(fold: int | None = None, kfold_k: int = settings.KFOLD_K):
+    """Rebuild the train/val split and datasets.
 
-    Identical to the dataset cell shared by ``020``/``021``/``023`` —
-    fully determined by ``settings`` (fixed seed), so no dataset state
-    needs to cross the process boundary from the notebook.
+    Fully determined by ``settings`` (fixed seed), so no dataset state needs to
+    cross the process boundary from the notebook.
+
+    With ``fold is None`` (default): the artwork-and-mockups split shared by
+    ``020``/``021``/``023``. With ``fold`` set: the grouped k-fold split
+    (``scripts.kfold``, ``fixing.md`` #4's Round 4) — fold ``fold`` of
+    ``kfold_k``, held-out real artworks as val, the rest plus all mockups as
+    train. There is no test split in k-fold mode; the held-out artworks are the
+    fold's evaluation set.
     """
     pairs = load_image_pairs(settings.IR_DIR, settings.RGB_DIR)
-    train_pairs, val_pairs, _ = mockup_aware_train_val_test_split(
-        pairs,
-        train_ratio=settings.TRAIN_RATIO,
-        val_ratio=settings.VAL_RATIO,
-        mockup_ids=settings.MOCKUP_ARTWORK_IDS,
-        mockup_test_ratio=settings.MOCKUP_TEST_RATIO,
-        seed=settings.SEED,
-    )
+    if fold is None:
+        train_pairs, val_pairs, _ = mockup_aware_train_val_test_split(
+            pairs,
+            train_ratio=settings.TRAIN_RATIO,
+            val_ratio=settings.VAL_RATIO,
+            mockup_ids=settings.MOCKUP_ARTWORK_IDS,
+            mockup_test_ratio=settings.MOCKUP_TEST_RATIO,
+            seed=settings.SEED,
+        )
+    else:
+        train_pairs, val_pairs = fold_split(
+            pairs,
+            k=kfold_k,
+            fold=fold,
+            mockup_ids=settings.MOCKUP_ARTWORK_IDS,
+            seed=settings.KFOLD_SEED,
+        )
+        print(f"k-fold: fold {fold}/{kfold_k}  "
+              f"train={len(train_pairs)}  val(held-out)={len(val_pairs)}")
     train_ds = build_dataset(
         train_pairs,
         batch_size=settings.BATCH_SIZE,
@@ -139,10 +161,26 @@ def main() -> None:
         "scripts.trainer.load_model, this does not require the checkpoint "
         "to be recompiled first.",
     )
+    parser.add_argument(
+        "--fold",
+        type=int,
+        default=None,
+        help="Grouped k-fold index (fixing.md #4's Round 4). When set, the "
+        "train/val split is scripts.kfold.fold_split(k=--kfold-k, fold=--fold) "
+        "instead of the standard mockup-aware split: held-out real artworks are "
+        "val, the rest plus all mockups are train, no test split. Point "
+        "--model-dir at a per-fold directory (e.g. models/kfold/fold_0).",
+    )
+    parser.add_argument(
+        "--kfold-k",
+        type=int,
+        default=settings.KFOLD_K,
+        help="Number of folds (only used with --fold). Defaults to settings.KFOLD_K.",
+    )
     args = parser.parse_args()
 
     set_global_seed()
-    train_ds, val_ds = _build_datasets()
+    train_ds, val_ds = _build_datasets(fold=args.fold, kfold_k=args.kfold_k)
     builder_kwargs = json.loads(args.kwargs)
     lr = args.lr if args.lr is not None else settings.LEARNING_RATE
     nll_beta = args.nll_beta if args.nll_beta is not None else settings.NLL_BETA

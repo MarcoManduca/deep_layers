@@ -40,6 +40,13 @@ class Settings(BaseSettings):
         Used by ``dataset.mockup_aware_train_val_test_split`` to keep almost
         all of their sections in train/val instead of holding entire groups
         out for test.
+    KFOLD_K : int
+        Number of folds for Round 4 grouped cross-validation
+        (``scripts.kfold``, ``fixing.md`` #4). Real artworks are partitioned
+        into this many groups by artwork ID; mockups always stay in train.
+    KFOLD_SEED : int
+        Seed for the fold assignment, kept separate from ``SEED`` so the
+        k-fold partition is stable even if the global training seed changes.
     MOCKUP_TEST_RATIO : float
         Fraction of mockup *pairs* (not groups) sent to test by
         ``dataset.mockup_aware_train_val_test_split`` — the mockup-side
@@ -177,6 +184,9 @@ class Settings(BaseSettings):
         "tverde",
     ]
     MOCKUP_TEST_RATIO: float = 0.05
+
+    KFOLD_K: int = 3
+    KFOLD_SEED: int = 42
 
     LOSS_ALPHA: float = 0.16
     CHARBONNIER_EPS: float = 1e-3

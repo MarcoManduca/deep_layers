@@ -97,7 +97,22 @@ The naive approach — one retrain pass per finding — would mean up to 8 full 
 
 ### Round 4 — Cross-validation (#4), last, may not happen
 
-- **Models**: limited to the 2-3 best-performing architectures resulting from Rounds 1-3 (not the full tree), to bound the combinatorial cost — k-fold multiplies training cost by k per model included. Which 2-3 is itself unresolved: pixel metrics (`030`/`033`) and detection/coherence (`040`/`050`) disagree — `resunet`/`resunet_nll` lead the former, `unet`/`attention_unet`/`unet_v2`/`unet_nll` lead the latter (see the Done section's Round 1-3 results). Since the project's deliverable is the detected residual, not IR fidelity for its own sake, detection/coherence is the more defensible criterion if only one has to be picked — but this needs to be decided and stated explicitly before the round starts, not left implicit.
+**Decided and tooled (2026-08-27), not yet run.** Scope narrowed to **one model,
+`attention_unet_nll`, `k=3`, β=0.5 fixed** — from `C4`/`C5`/`final-comments.md`:
+`attention_unet(_nll)` is top-2 on every detection cut (`struct` AUROC 0.70,
+`sz learned` AUROC 0.71, coherence 0.29), the deliverable criterion is
+detection/coherence (not pixel fidelity), and the NLL head covers both signals
+(`structural delta` from its μ, `structural z`). A second model is added only if
+fold variance turns out alarming. Infrastructure: `scripts/kfold.py`
+(`grouped_kfold_splits` — real artworks partitioned by ID into k groups, mockups
+always in train, no test split), `scripts/train_single.py --fold i --kfold-k K`,
+`config.KFOLD_K`/`KFOLD_SEED`, notebooks `060_kfold_training.ipynb` (skip-if-exists,
+one resumable subprocess per fold — run across several short sessions) and
+`061_kfold_evaluation.ipynb` (per-fold held-out pixel metrics + GT detection AUROC
+per fold-model and as a 3-fold ensemble; tolerates partial runs). 259/259 unit tests
+(new `test_kfold.py`). Real-artwork groups: 25 → ~8-9 per fold, 214-333 val pairs.
+
+- **Models** (original note, superseded by the decision above): limited to the 2-3 best-performing architectures resulting from Rounds 1-3 (not the full tree), to bound the combinatorial cost — k-fold multiplies training cost by k per model included. Which 2-3 is itself unresolved: pixel metrics (`030`/`033`) and detection/coherence (`040`/`050`) disagree — `resunet`/`resunet_nll` lead the former, `unet`/`attention_unet`/`unet_v2`/`unet_nll` lead the latter (see the Done section's Round 1-3 results). Since the project's deliverable is the detected residual, not IR fidelity for its own sake, detection/coherence is the more defensible criterion if only one has to be picked — but this needs to be decided and stated explicitly before the round starts, not left implicit.
 - **Why last**: k-fold validation should run against the final recipe, not be repeated every time an upstream change (Round 1-3) is introduced. Running it first would mean re-running the whole k-fold sweep after every subsequent architecture change.
 - **Fold count and time estimate** (this session, 2026-08-27): `k=5` is the textbook default; `k=3` is the pragmatic floor still worth calling "cross-validation" (a genuine held-out variance estimate across 3 independent splits, vs. today's single fixed split) rather than `k=5`'s finer but ~1.7x-costlier estimate. With ~30 distinct artwork/mockup groups in `data/`, `k=5` gives ~6 groups/fold and `k=3` gives ~10 — both are plausible group counts for the grouped split this multiplies, so the choice is really about compute budget, not statistical validity. Time per fold-run, measured this session (`unet_v2`'s real training log, 108 train batches, ~195 s/epoch on this hardware): **~5.4 hours** for a 100-epoch run (both `unet_v2` and `unet_restormer` were still improving at the 100-epoch cap this session, so 100 is the realistic planning number for a healthy architecture, not a worst case). Total (sequential — this project trains one model per subprocess, no parallelism):
 
