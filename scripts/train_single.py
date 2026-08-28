@@ -86,8 +86,10 @@ def _build_datasets(fold: int | None = None, kfold_k: int = settings.KFOLD_K):
             mockup_ids=settings.MOCKUP_ARTWORK_IDS,
             seed=settings.KFOLD_SEED,
         )
-        print(f"k-fold: fold {fold}/{kfold_k}  "
-              f"train={len(train_pairs)}  val(held-out)={len(val_pairs)}")
+        print(
+            f"k-fold: fold {fold}/{kfold_k}  "
+            f"train={len(train_pairs)}  val(held-out)={len(val_pairs)}"
+        )
     train_ds = build_dataset(
         train_pairs,
         batch_size=settings.BATCH_SIZE,
@@ -139,6 +141,16 @@ def main() -> None:
         "used is recorded in the command that launched it.",
     )
     parser.add_argument(
+        "--loss-alpha",
+        type=float,
+        default=None,
+        help="Charbonnier weight of scripts.losses.combined_loss (ignored "
+        "with --nll); (1 - alpha) weights the (1 - MS-SSIM) term. Defaults "
+        "to settings.LOSS_ALPHA. Pass it explicitly to sweep the "
+        "fidelity/structure trade-off without touching ambient config, so "
+        "the value a run used is recorded in the command that launched it.",
+    )
+    parser.add_argument(
         "--lr",
         type=float,
         default=None,
@@ -184,9 +196,12 @@ def main() -> None:
     builder_kwargs = json.loads(args.kwargs)
     lr = args.lr if args.lr is not None else settings.LEARNING_RATE
     nll_beta = args.nll_beta if args.nll_beta is not None else settings.NLL_BETA
+    loss_alpha = args.loss_alpha if args.loss_alpha is not None else settings.LOSS_ALPHA
 
     banner = (
-        f"{args.arch} ({args.loss_name}, beta={nll_beta})" if args.nll else args.arch
+        f"{args.arch} ({args.loss_name}, beta={nll_beta})"
+        if args.nll
+        else f"{args.arch} (combined_loss, alpha={loss_alpha})"
     )
     print(f"\n{'=' * 60}\n  Architecture: {banner}\n{'=' * 60}")
 
@@ -211,7 +226,7 @@ def main() -> None:
             model,
             args.arch,
             lr=lr,
-            loss_alpha=settings.LOSS_ALPHA,
+            loss_alpha=loss_alpha,
             weight_decay=settings.WEIGHT_DECAY,
         )
     model.summary(line_length=80)
