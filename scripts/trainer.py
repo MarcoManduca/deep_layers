@@ -12,6 +12,7 @@ from scripts.metrics import PSNRMetric, SSIMMetric
 from scripts.resunet import build_resunet
 from scripts.unet import build_unet
 from scripts.unet_dilated import build_unet_dilated
+from scripts.unet_residual import build_unet_residual
 from scripts.unet_restormer import build_unet_restormer
 from scripts.unet_v2 import build_unet_v2
 from scripts.unet_v2_dilated import build_unet_v2_dilated
@@ -36,6 +37,11 @@ _BUILDERS = {
     # directly (see scripts/aspp.py).
     "unet_dilated": build_unet_dilated,
     "unet_v2_dilated": build_unet_v2_dilated,
+    # Residual-head variant of "unet": same backbone, but the head
+    # predicts IR as a signed delta from mean(R, G, B) instead of
+    # predicting IR directly (see scripts/unet_residual.py). Its own
+    # checkpoint so the head is the only difference from "unet".
+    "unet_residual": build_unet_residual,
 }
 
 
@@ -50,7 +56,9 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
         ``"efficientnet_unet_ft"`` (the Round 2 two-phase fine-tuning
         checkpoint — same builder as ``"efficientnet_unet"``, see
         ``_BUILDERS``), ``"unet_dilated"``, ``"unet_v2_dilated"`` (Round 3
-        dilated-bottleneck variants, ``fixing.md`` #7).
+        dilated-bottleneck variants, ``fixing.md`` #7), or
+        ``"unet_residual"`` (residual output head, see
+        :mod:`scripts.unet_residual`).
     **kwargs
         Forwarded to the underlying builder function
         (e.g. ``filters``, ``bottleneck``).
