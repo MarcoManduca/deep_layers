@@ -30,6 +30,12 @@ def test_efficientnet_unet_ft_is_registered_without_building_it() -> None:
     assert _BUILDERS["efficientnet_unet_ft"] is _BUILDERS["efficientnet_unet"]
 
 
+def test_residual_head_variant_is_registered() -> None:
+    # Same reasoning as the dilated variants: the builder itself is covered
+    # by tests/unit/test_unet_residual.py, only registration here.
+    assert "unet_residual" in _BUILDERS
+
+
 def test_dilated_variants_are_registered() -> None:
     # fixing.md #7 (Round 3): unet_dilated/unet_v2_dilated build a full
     # tf.keras.Model (downloads nothing, unlike efficientnet_unet) —
@@ -49,6 +55,7 @@ def test_dilated_variants_are_registered() -> None:
         "efficientnet_unet_ft",
         "unet_dilated",
         "unet_v2_dilated",
+        "unet_residual",
     ],
 )
 def test_compile_model_uses_combined_loss_for_every_architecture(
