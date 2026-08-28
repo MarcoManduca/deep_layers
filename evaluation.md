@@ -333,10 +333,11 @@ fixed train/val split. Round 4 measures how far those estimates move across
 independent splits. Notebooks: `060_kfold_training.ipynb` / `061_kfold_evaluation.ipynb`;
 split logic in `scripts/kfold.py`.
 
-**Design.** Scope narrowed from "all models" to **one model** — `attention_unet_nll`
-(top-2 on every detection cut in `C4`/`C5`, and its NLL head yields both
-`structural delta` from `μ` and `structural z` from `μ/σ`) — at **k=3**, **β=0.5**
-fixed. This is a variance estimate, not a model search. Real artworks are partitioned
+**Design.** Started with **one model** — `attention_unet_nll` (top-2 on every
+detection cut in `C4`/`C5`, and its NLL head yields both `structural delta` from `μ`
+and `structural z` from `μ/σ`) — at **k=3**, **β=0.5** fixed. `resunet_nll` was later
+k-folded as a second model (2026-08-28; `060`/`061` generalised to k-fold any of the
+14 project architectures). This is a variance estimate, not a model search. Real artworks are partitioned
 into 3 groups **by artwork ID** (no section leakage); fold `i` holds out group `i` for
 validation, the rest **plus all mockups** train. No test split — the held-out
 artworks are the fold's evaluation set, and `data/test/` (GT01–03) stays external to
@@ -349,19 +350,30 @@ fixes carry over to the k-fold splits. Early-stopped at epoch 22 / 38 / 24; best
 (9 artworks, 333 val pairs) and lands ~0.06 higher in `val_loss` than folds 1–2,
 which agree tightly.
 
+**Training (`resunet_nll`, 2026-08-28).** Same 3 folds, no NaN / no instability.
+Early-stopped at epoch 36 / 30 / 34; best `val_loss` −0.3811 / −0.4583 / −0.4465 —
+same fold-0-is-hardest pattern.
+
 **Results (`061`).**
 
-| metric | per-fold mean ± std | 3-fold ensemble |
-|---|---|---|
-| held-out `val_loss` | −0.4240 ± 0.0280 | — |
-| held-out MAE | 0.103 ± 0.013 | — |
-| `structural delta` AUROC (mean over GT01–03) | 0.678 ± 0.008 | **0.700** |
-| `structural z` AUROC (mean over GT01–03) | 0.699 ± 0.008 | **0.719** |
+| metric | `attention_unet_nll` per-fold ± std | ensemble | `resunet_nll` per-fold ± std | ensemble |
+|---|---|---|---|---|
+| held-out `val_loss` | −0.4240 ± 0.0280 | — | −0.4286 ± 0.0339 | — |
+| held-out MAE | 0.103 ± 0.013 | — | **0.092 ± 0.010** | — |
+| `structural delta` AUROC (mean over GT01–03) | 0.678 ± 0.008 | 0.700 | 0.674 ± 0.011 | 0.692 |
+| `structural z` AUROC (mean over GT01–03) | 0.699 ± 0.008 | 0.719 | **0.716 ± 0.011** | **0.728** |
 
-- **Fold-to-fold variance is small.** AUROC std ≈ 0.008 — far below the gap between
-  the two signals, and below the spread between GT paintings. No ranking established
-  earlier in the project changes: `structural z` ≥ `structural delta` on every fold
-  and on the ensemble.
+- **Fold-to-fold variance is small for both models.** AUROC std ≈ 0.008–0.011 — far
+  below the gap between the two signals, and below the spread between GT paintings.
+  No ranking established earlier in the project changes: `structural z` ≥
+  `structural delta` on every fold and on the ensemble.
+- **`resunet_nll` is at least `attention_unet_nll`'s equal under CV.** It wins pixel
+  fidelity outright (MAE 0.092 vs 0.110 — the long-standing "resunet wins fidelity"
+  result, now cross-validated), edges it on the primary `structural z` signal (0.728
+  vs 0.719 ensemble; 0.716 vs 0.699 per fold, ~1 std so not decisive alone), and its
+  learned σ pays off more (Δ→z gain +0.042 vs +0.021), mostly on the hard painting
+  GT03 (`structural z` ensemble 0.690 vs 0.653). `C4`/`C5`'s pick of
+  `attention_unet_nll` as "the" model was driven by the single split.
 - **Per-GT pattern unchanged from `C5`:** GT01 strong (0.73–0.82), GT02 moderate
   (0.66–0.69), GT03 weak (0.57–0.69). GT03 stays hard regardless of which fold
   predicts it — a property of its underdrawing (visible only in real IR), not of the
@@ -374,7 +386,9 @@ which agree tightly.
 
 **Verdict — finding #4 resolved as "the single split was adequate."** The
 point-estimate metrics used throughout this project carry a fold-to-fold std of
-~0.008 AUROC / ~0.03 loss. No second model is warranted (fold variance is not
-alarming). Defensible headline number for the write-up:
-**`attention_unet_nll`, `structural z` detection AUROC = 0.70 ± 0.01 (per fold),
-0.72 (3-fold ensemble)** on GT01–03; `structural delta` = 0.68 ± 0.01 / 0.70.
+~0.01 AUROC / ~0.03 loss, confirmed on two independent NLL architectures. No further
+models are warranted. Defensible headline number for the write-up:
+**`structural z` detection AUROC ≈ 0.72 (3-fold ensemble), 0.70 ± 0.01 (per fold)**
+on GT01–03, citing both `attention_unet_nll` and `resunet_nll`; `structural delta`
+≈ 0.70 / 0.68 ± 0.01. `resunet_nll` is the stronger of the two on this signal and on
+fidelity.
