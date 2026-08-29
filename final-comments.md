@@ -212,6 +212,21 @@ not help detection.
   painting.
 - **Loss-weight sweep for the heteroscedastic β.** β = 0.5 is already the
   best-calibrated point; no other value improves it.
+- **Dropping the mockups and the grouped split.** An ablation
+  (`020_bis_training_generic.ipynb` / `C6_mockups_vs_generic.ipynb`) retrained
+  `unet` / `resunet` on a split that excludes every synthetic paint-on-support
+  mockup and cuts the remaining real artworks train/val at the pair level, with
+  no artwork grouping. On `data/test/` this raised `unet` reconstruction fidelity
+  (+0.5 dB PSNR) but left `structural_delta` detection AUROC flat — `unet`
+  0.707 → 0.704, `resunet` 0.681 → 0.691, both inside the per-fold noise — with
+  no coherent per-image direction. The fidelity gain is expected and
+  uninteresting: pair-level splitting leaks each painting's style across
+  train/val, so early stopping selects a checkpoint fit more closely to a corpus
+  the `data/test/` paintings resemble more than the mockups do — an easier task,
+  not a better model. The mockups and the 3-way grouped split are not what limits
+  detection. (The `attention_unet` generic run diverged — `val_loss` 0.46 vs.
+  ~0.22, stopped at 21 epochs — and its `C6` row is a failed checkpoint, not a
+  result.)
 
 ---
 
