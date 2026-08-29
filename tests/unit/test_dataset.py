@@ -13,6 +13,7 @@ from scripts.dataset import (
     grouped_train_val_test_split,
     load_image_pairs,
     mockup_aware_train_val_test_split,
+    mockup_free_train_val_split,
     pad_to_multiple,
 )
 
@@ -196,6 +197,44 @@ def test_mockup_aware_split_covers_every_pair_exactly_once() -> None:
     # Assert
     assert len(train) + len(val) + len(test) == len(pairs)
     assert set(train + val + test) == set(pairs)
+
+
+def test_mockup_free_split_drops_every_mockup_pair() -> None:
+    # Arrange
+    pairs = _fake_pairs({"a1": 10, "b2": 10, "c3": 10, "tblu": 8, "tverde": 6})
+
+    # Act
+    train, val = mockup_free_train_val_split(
+        pairs, val_ratio=0.2, mockup_ids=["tblu", "tverde"], seed=42
+    )
+    ids = {extract_artwork_id(p[0].stem) for p in train + val}
+
+    # Assert: no mockup pair survives on either side, and nothing else is lost.
+    assert ids == {"a1", "b2", "c3"}
+    assert len(train) + len(val) == 30
+
+
+def test_mockup_free_split_allows_same_artwork_on_both_sides() -> None:
+    # Arrange: one artwork, many sections -> a pair-level split must span it.
+    pairs = _fake_pairs({"a1": 20, "tblu": 5})
+
+    # Act
+    train, val = mockup_free_train_val_split(
+        pairs, val_ratio=0.3, mockup_ids=["tblu"], seed=42
+    )
+
+    # Assert: "a1" appears in both train and val (no grouping guarantee).
+    assert any(extract_artwork_id(p[0].stem) == "a1" for p in train)
+    assert any(extract_artwork_id(p[0].stem) == "a1" for p in val)
+
+
+def test_mockup_free_split_is_deterministic_for_same_seed() -> None:
+    pairs = _fake_pairs({"a1": 8, "b2": 8, "tblu": 4})
+
+    first = mockup_free_train_val_split(pairs, mockup_ids=["tblu"], seed=42)
+    second = mockup_free_train_val_split(pairs, mockup_ids=["tblu"], seed=42)
+
+    assert first == second
 
 
 @pytest.mark.parametrize(

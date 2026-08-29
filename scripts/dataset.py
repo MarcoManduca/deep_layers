@@ -219,6 +219,61 @@ def mockup_aware_train_val_test_split(
     return train_pairs, val_pairs, test_pairs
 
 
+def mockup_free_train_val_split(
+    pairs: list[tuple[Path, Path]],
+    val_ratio: float = 0.15,
+    mockup_ids: list[str] | None = None,
+    seed: int = 42,
+) -> tuple[list[tuple[Path, Path]], list[tuple[Path, Path]]]:
+    """Split into train / val only, after dropping every mockup pair.
+
+    An ablation split (``020_bis_training_generic.ipynb`` / ``C6``) that
+    deliberately breaks the two rules
+    :func:`mockup_aware_train_val_test_split` enforces, so the effect of each
+    can be measured:
+
+    - **Mockups are excluded entirely.** Every pair whose artwork ID is in
+      ``mockup_ids`` (default ``config.settings.MOCKUP_ARTWORK_IDS``) is
+      dropped — not routed to train — so the model never sees the synthetic
+      paint-on-support samples.
+    - **No grouping, no test fold.** The remaining real-artwork pairs are
+      shuffled and cut into train / val at the individual-pair level with a
+      plain random split, so sections of the same artwork can land on both
+      sides. There is no held-out test fold; evaluation is done on
+      ``data/test/`` (the GT-annotated paintings), which neither this split
+      nor the standard one ever touches.
+
+    Parameters
+    ----------
+    pairs : list[tuple[Path, Path]]
+        Sorted list of ``(rgb_path, ir_path)`` tuples.
+    val_ratio : float
+        Fraction of the mockup-free pairs assigned to validation.
+    mockup_ids : list[str] or None
+        Artwork IDs to drop. Defaults to ``config.settings.MOCKUP_ARTWORK_IDS``.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    tuple[list, list]
+        ``(train_pairs, val_pairs)``
+    """
+    if mockup_ids is None:
+        from scripts.config import settings
+
+        mockup_ids = settings.MOCKUP_ARTWORK_IDS
+    mockup_ids = set(mockup_ids)
+
+    real_pairs = [
+        p for p in pairs if extract_artwork_id(p[0].stem) not in mockup_ids
+    ]
+    train_pairs, val_pairs = train_test_split(
+        real_pairs, test_size=val_ratio, random_state=seed
+    )
+    return train_pairs, val_pairs
+
+
 def pad_to_multiple(
     image: tf.Tensor,
     multiple: int = 16,

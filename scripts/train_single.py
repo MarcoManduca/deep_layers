@@ -48,6 +48,7 @@ from scripts.dataset import (
     build_dataset,
     load_image_pairs,
     mockup_aware_train_val_test_split,
+    mockup_free_train_val_split,
 )
 from scripts.kfold import fold_split
 from scripts.reproducibility import set_global_seed
@@ -55,21 +56,39 @@ from scripts.trainer import compile_model, get_callbacks, get_model
 from scripts.trainer_nll import compile_model_nll, get_model_nll
 
 
-def _build_datasets(fold: int | None = None, kfold_k: int = settings.KFOLD_K):
+def _build_datasets(
+    fold: int | None = None,
+    kfold_k: int = settings.KFOLD_K,
+    generic_split: bool = False,
+):
     """Rebuild the train/val split and datasets.
 
     Fully determined by ``settings`` (fixed seed), so no dataset state needs to
     cross the process boundary from the notebook.
 
-    With ``fold is None`` (default): the artwork-and-mockups split shared by
-    ``020``/``021``/``023``. With ``fold`` set: the grouped k-fold split
-    (``scripts.kfold``, ``fixing.md`` #4's Round 4) — fold ``fold`` of
-    ``kfold_k``, held-out real artworks as val, the rest plus all mockups as
-    train. There is no test split in k-fold mode; the held-out artworks are the
-    fold's evaluation set.
+    With ``fold is None`` and ``generic_split is False`` (default): the
+    artwork-and-mockups split shared by ``020``/``021``/``023``. With ``fold``
+    set: the grouped k-fold split (``scripts.kfold``, ``fixing.md`` #4's Round
+    4) — fold ``fold`` of ``kfold_k``, held-out real artworks as val, the rest
+    plus all mockups as train. With ``generic_split`` set: the mockup-free
+    ablation split (``scripts.dataset.mockup_free_train_val_split``,
+    ``020_bis_training_generic.ipynb`` / ``C6``) — every mockup pair dropped,
+    the rest cut train/val at the pair level with no grouping and no test fold.
+    ``fold`` and ``generic_split`` are mutually exclusive.
     """
     pairs = load_image_pairs(settings.IR_DIR, settings.RGB_DIR)
-    if fold is None:
+    if generic_split:
+        train_pairs, val_pairs = mockup_free_train_val_split(
+            pairs,
+            val_ratio=settings.VAL_RATIO,
+            mockup_ids=settings.MOCKUP_ARTWORK_IDS,
+            seed=settings.SEED,
+        )
+        print(
+            f"generic split (mockups excluded, ungrouped): "
+            f"train={len(train_pairs)}  val={len(val_pairs)}"
+        )
+    elif fold is None:
         train_pairs, val_pairs, _ = mockup_aware_train_val_test_split(
             pairs,
             train_ratio=settings.TRAIN_RATIO,
@@ -189,10 +208,25 @@ def main() -> None:
         default=settings.KFOLD_K,
         help="Number of folds (only used with --fold). Defaults to settings.KFOLD_K.",
     )
+    parser.add_argument(
+        "--generic-split",
+        action="store_true",
+        help="Use the mockup-free ablation split "
+        "(scripts.dataset.mockup_free_train_val_split, "
+        "020_bis_training_generic.ipynb / C6): every mockup pair is dropped and "
+        "the rest is cut train/val at the pair level with no artwork grouping "
+        "and no test fold. Mutually exclusive with --fold. Point --model-dir at "
+        "a separate directory (e.g. models/deterministic_generic).",
+    )
     args = parser.parse_args()
 
+    if args.generic_split and args.fold is not None:
+        parser.error("--generic-split and --fold are mutually exclusive.")
+
     set_global_seed()
-    train_ds, val_ds = _build_datasets(fold=args.fold, kfold_k=args.kfold_k)
+    train_ds, val_ds = _build_datasets(
+        fold=args.fold, kfold_k=args.kfold_k, generic_split=args.generic_split
+    )
     builder_kwargs = json.loads(args.kwargs)
     lr = args.lr if args.lr is not None else settings.LEARNING_RATE
     nll_beta = args.nll_beta if args.nll_beta is not None else settings.NLL_BETA
