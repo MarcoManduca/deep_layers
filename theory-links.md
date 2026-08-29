@@ -20,9 +20,8 @@ recurrence would buy and why we decline it (L06), how to stop a large model
 overfitting a small dataset (L07), and finally the two topics the project is
 actually built on — autoencoder topology and dense prediction (L08).
 
-**Part 7** is a set of per-lecture summary tables. **Part 8** collects what this
-mapping exposed: findings and open items, each a pointer back to where it is
-argued rather than a re-argument.
+**Part 7** is a set of per-lecture summary tables. **Part 8** records the design
+questions this mapping raised and how each was resolved.
 
 Every claim about the code was verified against this repository, and the
 arithmetic is shown so it can be re-checked.
@@ -65,10 +64,20 @@ makes the choices elsewhere defensible rather than accidental.
 ## Companion documents
 
 Read [README.md](README.md) first for what the project does; this file assumes it
-and adds the theory layer. Also [code-review.md](code-review.md) (current state
-and open issues), [evaluation.md](evaluation.md) (what each evaluation pipeline
-measures and what it does not), [note.md](note.md) (design rationale for the
-delta analysis).
+and adds the theory layer. Also [code-review.md](code-review.md) (code structure
+and engineering choices) and [final-comments.md](final-comments.md) (the
+quantitative model comparison and the recommended models).
+
+## A note on the final recipe
+
+Several course concepts below are discussed first against the textbook default and
+then against what the project actually settled on, because the two differ. The
+final training recipe uses **`GroupNormalization`** (not BatchNorm — unstable at
+`BATCH_SIZE = 8`), **He initialisation** (not the Glorot default — ReLU
+throughout), **weight decay** `1e-5` and **per-element gradient clipping** in the
+optimiser, and a **grouped k-fold** cross-validation on top of the fixed split.
+Where a section discusses the choice as an open question, Part 8 records how it
+was resolved and what was found.
 
 ---
 
@@ -108,7 +117,7 @@ the main way to misread the code:**
 | 1 | **a learned filter** | a `3×3` kernel | a weighted sum → *convolution* | every architecture — L05 slide 18 |
 | 2 | **a whole classifier** | an image patch | one CNN forward pass classifying the centre pixel | **rejected** — L08 slides 28–32, §6.11 |
 | 3 | **a statistics window** | an `11×11` Gaussian window | local mean, variance, covariance — nothing learned | [delta_analysis.py](scripts/delta_analysis.py), §6.5 |
-| 4 | **a whole trained model** | a large tile of a painting | a full model prediction, then blend tiles | **retired** (`predict_with_overlap`, commit `c7be597`), §4.6 |
+| 4 | **a whole trained model** | a large tile of a painting | a full model prediction, then blend tiles | **retired** — a tiled/blended inference path existed earlier and was removed once every notebook used whole-image inference (§4.6, code-review §5.5) |
 
 A convolution *is* a sliding window (case 1). But "sliding window" as L08 uses it
 in the semantic-segmentation section (case 2) is a strategy for the whole task,
@@ -161,9 +170,10 @@ for downsampling in [unet_v2.py](scripts/unet_v2.py) (`use_strided_conv=True`)
 and in every `Conv2DTranspose`.
 
 **Dilation** — L05 slide 19, "to have a larger receptive field": spread the
-filter taps apart so context widens without downsampling. **Used nowhere in this
-project**, and for dense prediction that is a real gap rather than a decision —
-see §8.8.
+filter taps apart so context widens without downsampling. Used in the
+`unet_dilated` / `unet_v2_dilated` variants (an ASPP-style bottleneck,
+`scripts/aspp.py`); it produced no benefit and some training instability — see
+§8.8.
 
 ## 0.6 Receptive field
 
@@ -314,15 +324,20 @@ Skips are how the position that pooling discards gets handed back (§3.4), and w
 UNet keeps detail a plain encoder–decoder loses. They would be pathological if
 this were an autoencoder — §6.1.
 
-## 0.12 Batch Normalization
+## 0.12 Batch / Group Normalization
 
-Normalizes each channel to zero mean and unit variance over the current
-mini-batch, then rescales by two learned parameters to restore expressive power.
-**L05 slides 44–48, 78.** Present in every conv block of every architecture — 18
-of them in `unet` — with `use_bias=False` on the preceding convolution.
+Batch Normalization normalizes each channel to zero mean and unit variance over
+the current mini-batch, then rescales by two learned parameters. **L05 slides
+44–48, 78.** The lecture's canonical normalizer — but its batch statistics are
+noisy at small batch sizes, and this project trains at `BATCH_SIZE = 8`.
 
-L05 slide 48 lands on our configuration in four separate ways, including one
-genuine problem. That is argued in §3.5.
+The from-scratch architectures therefore use **`GroupNormalization`** instead
+(Wu & He, 2018): the same normalize-then-rescale operation, but over groups of
+channels within each sample, so it is independent of batch size. One per conv
+block, ~18 in `unet`, with `use_bias=False` on the preceding convolution. The
+pretrained EfficientNetB0 encoder keeps its own BatchNorm (the ImageNet running
+statistics are part of the transferred knowledge). Why the switch, and the four
+ways L05 slide 48 lands on the original choice: §3.5.
 
 ## 0.13 Dropout
 
@@ -338,12 +353,16 @@ decoder block. Both reasons for that scope, and its actual (unused) status: §5.
 
 ## 0.14 Activations
 
-- **ReLU** — after every BatchNorm, throughout. L05 slide 31: "preferred
+- **ReLU** — after every normalization layer, throughout. L05 slide 31: "preferred
   activation function in CNN is ReLU… leaves outputs with positive values as is,
   replaces negative values with 0". L04 slide 18 makes the assignment explicit
-  per architecture family — §2.2.
+  per architecture family — §2.2. Applied through a small `_ReLUFix` wrapper layer
+  rather than `layers.ReLU()`, to work around a tensorflow-metal GPU bug — see
+  [code-review.md](code-review.md) §3.3.
 - **Sigmoid** — output only, squashing to `[0, 1]` to match the normalized IR
-  target. Note the difference from L05 slide 40, where sigmoid represents "a
+  target. The one exception is `unet_residual`, whose head instead applies
+  **`tanh`** to a signed residual added to `mean(R,G,B)` — the only `tanh` in the
+  project (§5.7). Note the difference from L05 slide 40, where sigmoid represents "a
   probability distribution over a binary variable": ours is not a probability but
   a bounded regression output (§0.15). The `log_var` channel of the `*_nll` models
   has no sigmoid; it is clipped by `ClipLogVar`
@@ -386,11 +405,13 @@ comparable to a deterministic one on the same metrics.
 - **Mini-batch** — `BATCH_SIZE = 8`. L03 slide 44 gives 50–256 as typical; §1.3
   and §3.5 both flag ours.
 - **Epoch** — one pass over the training split. `EPOCHS = 100`, though
-  EarlyStopping (`patience=15`) usually stops sooner.
+  EarlyStopping (`patience=20`) usually stops sooner.
 - **Backpropagation** — L04 slides 25–52 derive it; L05 slide 84 and L08 slide 3
-  place it as the standard training method. Optimizer: Adam, `lr = 1e-4`, with
-  `ReduceLROnPlateau(factor=0.5, patience=7)` — the automated, gentler form of
-  both L05 recipes' manual "÷10 when validation plateaus" (slides 54, 78).
+  place it as the standard training method. Optimizer: Adam, `lr = 1e-4`,
+  `weight_decay = 1e-5`, per-element gradient clipping (`clipvalue = 1.0`, see
+  [code-review.md](code-review.md) §3.5), with `ReduceLROnPlateau` — the automated,
+  gentler form of both L05 recipes' manual "÷10 when validation plateaus"
+  (slides 54, 78).
 
 ## 0.17 Gating
 
@@ -408,13 +429,11 @@ How closely they match the LSTM form: §4.9.
 
 | Concept | Course | Status here |
 |---|---|---|
-| **Dilation** | L05 slide 19 | untried — a gap, not a rejection (§8.8) |
 | **Fully connected layer** | L05 slide 39 | none. It fixes the input resolution, which would break the central invariant. L05 slide 70 (GoogLeNet "removes FC layers completely") and slide 77 (ResNet "no FC layers at the end") go the same way (§3.6) |
 | **Softmax** | L05 slide 40 | unused — the output is a continuous reflectance, not a class (§0.15) |
 | **Average / stochastic / pyramid pooling** | L05 slide 37 | never benchmarked; max pooling only (§0.7) |
-| **Weight decay / norm penalties** | L07 slides 23–28 | **absent everywhere** (§5.2, §8.5) |
-| **k-fold cross-validation** | L03 slides 57–59 | one fixed split only (§1.5, §8.7) |
-| **`tanh`, recurrence, gradient clipping** | L06 | none — no sequence to process (§4.1, §4.7) |
+| **`tanh` (as a hidden activation), recurrence** | L06 | none — no sequence to process. `tanh` appears once, as `unet_residual`'s bounded output head (§4.1, §4.5) |
+| **Dropout** | L07 slides 30–33 | implemented in `unet_v2`, off by default; weight decay used instead (§5.4) |
 | **Adversarial / GAN augmentation** | L07 slides 6, 7, 9 | deprioritized: fabrication is worse than omission (§5.3) |
 | **Neural style transfer** | L07 slide 8 | untried, though the closest on-domain precedent uses it (§5.3) |
 
@@ -463,12 +482,12 @@ Reading the two split functions this way — one enforcing the first `i`, the ot
 managing a deliberate breach of the `d` — explains why they differ, rather than
 just recording that they do.
 
-> **Verification note.** As of this review the second mechanism is **inert**: none
-> of the six configured mockup IDs (`tblu`, `tbianco`, `tbruno`, `tgiallo`,
-> `trosso`, `tverde`) appears among the 29 artwork IDs actually present in
-> `data/`, so `mockup_aware_train_val_test_split` returns a split byte-identical to
-> `grouped_train_val_test_split`. The design argument above stands; the
-> configuration does not currently reach the data. See §8.11.
+> **Note.** An earlier data state had none of the six configured mockup IDs
+> (`tblu`, `tbianco`, `tbruno`, `tgiallo`, `trosso`, `tverde`) present in `data/`,
+> which made `mockup_aware_train_val_test_split` silently equivalent to
+> `grouped_train_val_test_split`. The data and the configuration have since been
+> reconciled — all six mockup groups are present — so the split now does what the
+> argument above describes. See §8.11.
 
 ## 1.2 Capacity, overfitting, and where this project sits
 
@@ -510,11 +529,13 @@ applications."
 `BATCH_SIZE = 8` is an order of magnitude below that band. AlexNet trained at 128
 (L05 slide 54), ResNet at 256 (L05 slide 78).
 
-The reason for 8 is real and physical: `400×400` inputs through a 1024-channel
-bottleneck on a single Metal GPU. But this is the second independent warning the
-course material raises about the same parameter — slide 44 on gradient-update
-variance here, L05 slide 48 on BatchNorm statistics in §3.5 — which makes it the
-best-evidenced open question this mapping produced. See §8.4.
+The reason for 8 is real and physical: large inputs through a 1024-channel
+bottleneck on a single Metal GPU. The course material raises two independent
+warnings about this parameter — slide 44 on gradient-update variance here, L05
+slide 48 on BatchNorm statistics in §3.5. The second was resolved by switching to
+`GroupNormalization`, which is batch-size-independent (§3.5, §8.4); the first
+stands, but with `EPOCHS = 100` and early stopping the update-variance cost is
+tolerated rather than fixed.
 
 ## 1.4 Loss, cost, objective — one thing, four names
 
@@ -526,23 +547,23 @@ Recorded so that the codebase's interchangeable use of these terms reads as
 sanctioned rather than sloppy. The distinction that *does* carry information is
 loss versus metric — §0.15.
 
-## 1.5 Cross-validation is not used
+## 1.5 Cross-validation
 
 **L03 slide 57**: "If model overfits, i.e. it is too sensitive to data, it will be
 **unstable** — use split training/test or **k-fold cross validation**."
 **L03 slides 58–59** then demonstrate model selection by cross-validation.
 
-We use the first option and not the second: a single fixed split seeded by
-`settings.SEED`. Verified — no `KFold`, `cross_val` or equivalent anywhere in
-`scripts/` or `tests/`.
+The project uses both. Day-to-day work runs on a single fixed split seeded by
+`settings.SEED`; on top of that, `scripts/kfold.py` implements a **grouped k-fold**
+(k = 3) — each fold holds out different whole artworks for validation, keeps all
+mockups in training, and leaves the three ground-truth paintings external to every
+fold. It was run on the two leading heteroscedastic models to put an error bar on
+the detection metrics.
 
-With 29 artworks and a *grouped* split, one test fold is a handful of paintings,
-and [evaluation.md](evaluation.md) §4b already records the consequence in practice:
-an evaluation set that was 6 sections of a single artwork, with "no cross-artwork
-diversity". Slide 57's instability is precisely that failure mode. Grouped k-fold —
-`k` folds, each holding out different whole artworks — is the textbook remedy, and
-it would let every reported metric carry an error bar instead of being a single
-point estimate. See §8.7.
+The result: fold-to-fold standard deviation of ≈ 0.01 AUROC, far below any ranking
+gap. Slide 57's instability does not materialise at this scale — the single fixed
+split was adequate, and cross-validation *confirms* its point estimates rather
+than deflating them (§8.7, and [final-comments.md](final-comments.md) §5).
 
 ---
 
@@ -604,7 +625,7 @@ Slide 53 is the feed-forward counterpart of L06's recurrent analysis (§4.7): th
 same multiplicative compounding, along depth instead of along time. The
 distinction §4.7 draws still holds — our 23 factors are 23 *different* matrices,
 not one matrix raised to a power — but the compounding is real, and it is what the
-18 BatchNorm layers ("improves gradient flow", L05 slide 48) and ResUNet's
+~18 normalization layers ("improves gradient flow", L05 slide 48) and ResUNet's
 additive shortcut (§4.8) are for.
 
 Slide 54's four enablers make a useful scorecard:
@@ -613,13 +634,12 @@ Slide 54's four enablers make a useful scorecard:
 |---|---|
 | many labelled data | **no** — 1167 patches from 29 artworks. This absence is what forces transfer learning (§3.7) and the self-supervised proxy task (§6.9) |
 | train longer, with GPUs | yes — `tensorflow-metal`, `EPOCHS = 100` |
-| better weight initialisation | **half** — we take the Keras default, which is Glorot/Xavier, while using ReLU everywhere. L07 slide 37 says that is the wrong pairing (§5.5, §8.6) |
-| regularise with dropout | effectively **no** — `dropout_rate` defaults to `0.0` and exists only in `unet_v2` (§0.13, §5.4) |
+| better weight initialisation | **yes** — `he_normal` on every ReLU-preceding conv, the pairing L07 slide 37 prescribes (§5.5) |
+| regularise with dropout | **no** — `dropout_rate` defaults to `0.0` and exists only in `unet_v2` (§0.13, §5.4); weight decay `1e-5` is used instead (§5.2) |
 | rectified linear units | yes — everywhere |
 
-Two of four absent, one half-met. Not an indictment: data and dropout are absent
-for stated reasons (§3.7, §5.4). The initialization one is not a decision at all,
-which is what makes it worth acting on.
+Three of four met. Data is the one genuine absence, for the reasons in §3.7 and
+§6.9; dropout was passed over in favour of weight decay.
 
 ---
 
@@ -694,27 +714,29 @@ the position back at every scale. This is the deep reason UNet's skips are not
 optional decoration here, and it is also why max unpooling — which passes
 positions but discards values — is the wrong trade (§6.13).
 
-## 3.5 BatchNorm: one slide, four hits, one real problem
+## 3.5 BatchNorm: one slide, four hits, and the one that forced GroupNorm
 
 §0.12 defines the operation. **L05 slide 48** is the single most load-bearing
-slide in this mapping, because four of its bullets land directly on our
+slide in this mapping, because four of its bullets land directly on the original
 configuration:
 
 | L05 slide 48 says | In this project |
 |---|---|
-| "usually inserted after convolutional layers and **before** non linearity" | exactly our `Conv2D → BatchNormalization → ReLU` order, in every `_conv_block` |
-| "**acts as regularization** during training" | this is the slide behind §6.3 — BatchNorm *is* our main regularizer, since we cannot compress. §5.1 notes it is doing work the canonical list does not credit |
-| "**behaves differently during training and testing**: this is a very common source of bugs!" | the general form of the dropout/BatchNorm variance shift that confines `dropout_rate` to two blocks in [unet_v2.py](scripts/unet_v2.py) — §5.4 |
-| "**small size of the mini batch may affect the BatchNorm**" | `BATCH_SIZE = 8`, with **18** BatchNormalization layers in `unet` |
+| "usually inserted after convolutional layers and **before** non linearity" | exactly the `Conv2D → Norm → ReLU` order, in every conv block |
+| "**acts as regularization** during training" | the slide behind §6.3 — the normalization layers are a genuine regularizer, since capacity cannot be reduced. §5.1 notes this |
+| "**behaves differently during training and testing**: this is a very common source of bugs!" | the general form of the dropout/normalizer variance shift that confines `dropout_rate` to two blocks in [unet_v2.py](scripts/unet_v2.py) — §5.4 |
+| "**small size of the mini batch may affect the BatchNorm**" | `BATCH_SIZE = 8` — an order of magnitude below AlexNet's 128 (slide 54) and ResNet's 256 (slide 78) |
 
-L05 slide 78 adds, for ResNet in practice, "BatchNormalization after every CONV
-layer" — which is what we do.
-
-**The fourth row is a real, unrecorded concern.** Batch statistics estimated from
-8 samples are noisy, and that noise enters 18 layers. AlexNet trained at 128
-(slide 54), ResNet at 256 (slide 78), and L03 slide 44 gives 50–256 as typical
-(§1.3). The standard remedies — `GroupNormalization`, or `LayerNormalization`,
-which `RestormerBlock` already uses internally — are untried here. See §8.4.
+**The fourth row was a real problem, and it was fixed.** Batch statistics
+estimated from 8 samples are noisy, and that noise enters ~18 layers per network.
+The from-scratch architectures were switched from `BatchNormalization` to
+**`GroupNormalization`** (Wu & He, 2018), which normalizes over channel groups
+within each sample and is therefore independent of batch size — it makes the first
+three rows above still hold (same position in the block, still a regularizer,
+still a train/test-mode layer) while removing the small-batch failure mode
+entirely. The pretrained EfficientNetB0 encoder keeps BatchNorm, since its running
+statistics are part of the transferred ImageNet knowledge. `LayerNormalization`
+(which `RestormerBlock` uses internally) would have been an alternative. See §8.4.
 
 ## 3.6 ResNet, degradation, and variable input sizes
 
@@ -762,12 +784,14 @@ question. We have 1167 patches from 29 artworks, and
 by default) with only the decoder trained. With this much data you do not learn an
 encoder from scratch, you borrow one.
 
-Two notes, both connecting to [code-review.md](code-review.md) §4:
+Two notes:
 
 - The standard recipe has a **second phase** — unfreeze and fine-tune end-to-end
-  at a lower learning rate once the decoder converges. `freeze_encoder=False`
-  exists in both EfficientNet builders and **nothing uses it**; the encoder has
-  been frozen for every run in the project's history. See §8.10.
+  at a lower learning rate once the decoder converges. This is implemented
+  (`efficientnet_unet_ft`, `freeze_encoder=False`, warm-started from the frozen
+  checkpoint) and was run: it *underperforms* the frozen baseline, because the
+  paired dataset is too small to fine-tune an ImageNet backbone without eroding it.
+  See §8.10.
 - The backbone is EfficientNetB0 (2019). L05 slide 79 cites Bianco, Cadene,
   Celona and Napoletano's benchmark analysis of architecture complexity versus
   accuracy — the natural reference for choosing a replacement, and the
@@ -873,7 +897,7 @@ reading of the analogy gets it backwards:
 Processing a `3674×2834` image does **not** make our network deeper. That single
 fact is why whole-image inference on images sixty-five times the area of a
 training patch shows none of L06's pathologies, and why the open question in
-[code-review.md](code-review.md) §4 is about memory and border context, not about
+[code-review.md](code-review.md) §5.5 is about memory and border context, not about
 optimization stability.
 
 ## 4.4 The architecture taxonomy: where our task sits
@@ -951,17 +975,16 @@ question here. Truncated BPTT is what you do when the thing you would like to
 process whole does not fit, and it is a **deliberate approximation with a known
 bias**: severing the chunk boundary discards dependencies that cross it.
 
-The spatial counterpart is meaning #4 of "sliding window" (§0.2).
-`predict_with_overlap` processed a large painting in tiles and Gaussian-blended
-them, and the blending existed for precisely the reason slide 44's truncation is
-approximate — a tile boundary severs spatial context, and the blend hides the seam
-rather than restoring what was lost.
+The spatial counterpart is meaning #4 of "sliding window" (§0.2). The
+tiled-inference path this project once used processed a large painting in tiles
+and Gaussian-blended them, and the blending existed for precisely the reason slide
+44's truncation is approximate — a tile boundary severs spatial context, and the
+blend hides the seam rather than restoring what was lost.
 
-The parallel sharpens [code-review.md](code-review.md) §4 rather than resolving
+The parallel sharpens [code-review.md](code-review.md) §5.5 rather than resolving
 it. Whole-image inference has *no* boundary-severing bias: it is the spatial
-equivalent of full BPTT, the exact computation. That is an argument in its favour
-the code review does not currently make. What it still does not settle is whether
-a model trained on `400×400` patches behaves the same when its BatchNorm
+equivalent of full BPTT, the exact computation. What it still does not settle is
+whether a model trained on `400×400` patches behaves the same when its normalizer
 statistics and receptive-field context meet a `3674×2834` input — a
 distribution-shift question, not an approximation question. The comparison remains
 unrun.
@@ -985,9 +1008,10 @@ Our 23-layer path does not have that structure, for two independent reasons:
    there is no exponential in a single spectrum. L04 slide 53's
    "small × small × small" compounding still applies (§2.3), but without the
    single-operator amplification.
-2. **18 BatchNorm layers.** L05 slide 48 lists "improves gradient flow" among
-   BatchNorm's benefits, and re-standardizing activations 18 times along the path
-   intervenes directly on the quantity that compounds.
+2. **~18 normalization layers.** L05 slide 48 lists "improves gradient flow" among
+   normalization's benefits, and re-standardizing activations ~18 times along the
+   path (`GroupNormalization`, §3.5) intervenes directly on the quantity that
+   compounds.
 
 L05 slide 73 is where the two lectures meet on this: "is learning better networks
 as easy as stacking more layers? An obstacle… was the notorious problem of
@@ -1034,14 +1058,15 @@ straight through. [resunet.py](scripts/resunet.py)'s shortcut is not:
 
 ```python
 shortcut = layers.Conv2D(filters, 1, padding="same", use_bias=False)(x)
-shortcut = layers.BatchNormalization()(shortcut)
+shortcut = GroupNormalization(groups=num_groups(filters))(shortcut)
 ...
 x = layers.Add()([x, shortcut])
 ```
 
-The shortcut passes through a learned `1×1` convolution and a BatchNorm on **every
-block, unconditionally**. That is He et al.'s *projection* shortcut, which the
-original paper uses only where channel counts change. So the "uninterrupted
+The shortcut passes through a learned `1×1` convolution and a normalization layer
+on **every block, unconditionally**. That is He et al.'s *projection* shortcut,
+which the original paper uses only where channel counts change. So the
+"uninterrupted
 additive path" slide 77 identifies as the mechanism is, in our ResUNet,
 interrupted at every block by a learned transform. The gradient highway is real
 but tolled.
@@ -1054,9 +1079,12 @@ x = inputs + self._attention(self.norm1(inputs))
 x = x + self._feed_forward(self.norm2(x))
 ```
 
-Two true identity paths, exactly slide 77's shape. If ResUNet is meant to work for
-the reason slide 78 gives, an identity shortcut where channels already match would
-cost nothing and match the mechanism. See §8.9.
+Two true identity paths, exactly slide 77's shape. Whether an identity shortcut
+where channels already match would help was checked directly — it turns out every
+`_residual_block` in this architecture *always* changes channel count (one block
+per depth level, widening on the way down and narrowing on the way up), so a
+conditional identity path would never fire. The unconditional projection stays.
+See §8.9.
 
 ## 4.9 Gating: LSTM's mechanism applied to space instead of time
 
@@ -1098,7 +1126,7 @@ each conditioned on those already produced.
 
 We predict in a single forward pass. Beyond the cost argument — an autoregressive
 pass over `3674×2834` pixels is roughly ten million sequential steps — there is a
-domain reason, the same one [code-review.md](code-review.md) §6.1 gives for
+domain reason, the same one [code-review.md](code-review.md) §6 gives for
 deprioritizing an adversarial term: **for a forensic and scholarly instrument, a
 plausible-looking fabricated mark is worse than a missed one.** Feeding a model's
 own output back as input is the mechanism by which small errors compound into
@@ -1109,7 +1137,7 @@ conservator will read as evidence, that asymmetry decides it.
 ## 4.11 When recurrence would actually become relevant
 
 So the "not applicable" verdict is bounded rather than absolute: there is one
-plausible route. [code-review.md](code-review.md) §6.4 raises a multi-band /
+plausible route. [code-review.md](code-review.md) §6 raises a multi-band /
 multispectral extension (MST++). A spectral stack — RGB, IR, UV, X-ray, or many
 narrow bands — has an ordered axis along which values are correlated, and that
 axis is far more sequence-like than space is. Sequence models are a legitimate
@@ -1142,22 +1170,22 @@ Where this project stands on each — the most useful single table in this file:
 
 | Slide 23 method | Status here | Where |
 |---|---|---|
-| **Early stopping** | **yes, fully**, and implemented exactly as slides 40–41 describe | `EarlyStopping(patience=15, restore_best_weights=True)` + `ModelCheckpoint(save_best_only=True)` — §5.6 |
+| **Early stopping** | **yes, fully**, and implemented exactly as slides 40–41 describe | `EarlyStopping(patience=20, min_delta=5e-4)` + `ModelCheckpoint(save_best_only=True)` — §5.6 |
 | **Data augmentation** | **yes**, with a domain-specific asymmetry the lecture's taxonomy explains | [augmentation.py](scripts/augmentation.py) — §5.3 |
-| **Dropout** | **effectively no** — `dropout_rate=0.0` by default, only in `unet_v2`, never enabled in a training notebook | [unet_v2.py](scripts/unet_v2.py) — §5.4 |
-| **Weight decay** | **no. Nowhere at all.** | §5.2, §8.5 |
+| **Weight decay** | **yes** — `1e-5` in the Adam optimiser, matching L05's ResNet recipe | §5.2 |
+| **Dropout** | **no** — `dropout_rate=0.0` by default, only in `unet_v2`, never enabled | [unet_v2.py](scripts/unet_v2.py) — §5.4 |
 
-Plus one the lecture does not list but L05 slide 48 does: **BatchNormalization**
-"acts as regularization during training", and we have 18 of them (§3.5). So in
-practice the project's regularization is early stopping, augmentation, BatchNorm
-and a frozen pretrained encoder — not the slide-23 list.
+Plus one the lecture does not list but L05 slide 48 does: normalization
+"acts as regularization during training", and there are ~18 `GroupNormalization`
+layers per network (§3.5). So the project's regularization is early stopping,
+augmentation, weight decay, GroupNorm, and a frozen pretrained encoder.
 
 Note what slide 22's definition **excludes**. The artwork-grouped split (§1.1) is
 *not* regularization: it does not modify the learning algorithm, it fixes the
 evaluation. The distinction matters, because no amount of regularization repairs a
 leaky split and no split repairs an over-capacity model.
 
-## 5.2 Weight decay: absent, and unremarked
+## 5.2 Weight decay
 
 **L07 slides 24–25**: "Many regularization approaches are based on limiting the
 capacity of models… by adding a **parameter norm penalty** to the objective
@@ -1166,18 +1194,17 @@ regularization. In deep learning community it is commonly known as **weight
 decay**. This regularization strategy drives the weights closer to the origin."
 **L07 slide 28** works through the L2 gradient interpretation.
 
-Verified absence: `grep -rn "weight_decay\|kernel_regularizer\|regularizers"
-scripts/` returns nothing, and `tf.keras.optimizers.Adam()`'s `weight_decay`
-defaults to `None`, which [trainer.py](scripts/trainer.py) does not override.
-**Not one of the 31 million parameters is subject to a norm penalty.**
+`compile_model` / `compile_model_nll` pass `Adam(weight_decay=settings.WEIGHT_DECAY)`
+with `WEIGHT_DECAY = 1e-5` — decoupled weight decay (AdamW), applied to every
+weight in every architecture. The value is taken directly from L05's ResNet recipe
+("weight decay of 1e-5", slide 78); AlexNet used `5e-4` (slide 54) but at a far
+larger batch and dataset.
 
-This is a gap rather than a considered rejection, and the course material makes
-that clear from two directions: slide 23 lists weight decay **first** among the
-most-used methods, and both of L05's worked recipes use it — AlexNet with "L2
-weight decay 5e-4" (L05 slide 54) and ResNet with "weight decay of 1e-5" (L05
-slide 78). For a project whose stated problem is excess capacity (§1.2, §6.3) it
-is the cheapest untried regularizer available: one argument to `Adam`, no
-architecture change. See §8.5.
+The course material warrants this from two directions: slide 23 lists weight decay
+**first** among the most-used methods, and both of L05's worked recipes use it.
+For a project whose central problem is excess capacity (§1.2, §6.3) it is the
+cheapest regularizer available — one optimiser argument, no architecture change.
+See §8.5.
 
 ## 5.3 Data augmentation, and the rule that explains our asymmetry
 
@@ -1213,21 +1240,21 @@ the general principle. This is worth promoting into the repo — §8.3.
 
 The remaining items in slide 6's list are rejected or untried, and two connect to
 decisions already on record. **Adversarial training** and the GAN route (slide 7)
-are deprioritized in [code-review.md](code-review.md) §6.1 because "a
+are deprioritized in [code-review.md](code-review.md) §6 because "a
 plausible-looking but fabricated mark would be worse than a missed one" — the same
 argument §4.10 gives against autoregressive generation. **Neural style transfer**
 (slide 8, offered for "few-shot learning — augmenting tiny datasets") is more
 interesting than it looks, because the closest on-domain precedent in the
 project's own bibliography — Cann et al. 2021, recovering underdrawings on works
-by Leonardo — is a style-transfer method. Untried, and absent from the code
-review's alternatives.
+by Leonardo — is a style-transfer method. Untried; noted in
+[code-review.md](code-review.md) §6 alongside the GAN route.
 
 Note finally that **L07 slide 4** lists "**increase the amount of data**, using
 augmentation, data generation or **new real data (data-centric AI)**" as a remedy
 *distinct* from regularization. The mockup groups are exactly that: physically
 created new real data, made to densify the pigment manifold (§6.7). The project
-did the data-centric thing before doing the regularization thing — though see
-§1.1's verification note and §8.11 on whether that data is currently reachable.
+did the data-centric thing before doing the regularization thing (see §1.1 and
+§8.11 on the data/configuration reconciliation that made the mockup split active).
 
 ## 5.4 Dropout: an ensemble, and only at training time
 
@@ -1241,21 +1268,21 @@ network… **Dropout is only used during training.**"
 random variable.
 
 Slide 32's last sentence is the root of the constraint shaping
-[unet_v2.py](scripts/unet_v2.py). Because dropout is active in training and
-inactive at inference, activation statistics differ between the two phases — and
-BatchNorm's stored running estimates were computed under the training-time
-distribution. L05 slide 48 names the general hazard ("behaves differently during
-training and testing: this is a very common source of bugs"); Li & Xu (README ref
-[17]) name the specific mechanism, variance shift. With BatchNorm in **every** conv
-block, dropout everywhere would compound the mismatch at every level — which is
-why `dropout_rate` touches only the bottleneck and the first decoder block, the
-two places where overfitting risk is most concentrated and where fine
-underdrawing-relevant detail is least at stake.
+[unet_v2.py](scripts/unet_v2.py). Dropout is active in training and inactive at
+inference, so activation statistics differ between the two phases. L05 slide 48
+names the general hazard ("behaves differently during training and testing: this
+is a very common source of bugs"); Li & Xu (README ref [16]) name the specific
+mechanism, variance shift, for the dropout–BatchNorm interaction in particular.
+The project's normalizer is now `GroupNormalization`, which does not carry
+train-time running estimates and so is less exposed to this than BatchNorm was —
+but `dropout_rate` was still scoped conservatively to only the bottleneck and the
+first decoder block, the two places where overfitting risk is most concentrated
+and fine underdrawing-relevant detail is least at stake.
 
 The honest status: dropout is **off** in every checkpoint this project has
 produced. It is an implemented, tested, unused option — which leaves early
 stopping and augmentation doing nearly all the declared regularization work, with
-BatchNorm doing the undeclared remainder (§5.1).
+GroupNorm and weight decay doing the rest (§5.1, §5.2).
 
 ## 5.5 Weight initialization: the wrong default for our activation
 
@@ -1270,26 +1297,19 @@ more effective.** He and colleagues argue that the Xavier initialization **does 
 work well with the ReLU activation function**, and instead propose an
 initialization of `σ² = 2/N`."
 
-Checked against the code. No layer in `scripts/` sets `kernel_initializer`, so
-every one takes the Keras default — and inspecting a built `unet` confirms it:
-**all 23 convolutional layers use `GlorotUniform`**, which is Xavier. Meanwhile
-every activation in the network is ReLU.
+Every ReLU-preceding convolution in the from-scratch architectures sets
+`kernel_initializer="he_normal"` — the He initialisation slide 37 prescribes for
+ReLU, `σ² = 2/N`. This was a deliberate change from the Keras default
+(`GlorotUniform` / Xavier), which slide 37 singles out as ineffective for ReLU:
+Xavier is derived under a `tanh` assumption (slide 35) and under-scales the
+variance for a rectifier.
 
-So the project sits in precisely the configuration slide 37 singles out as
-ineffective. Nothing chose it: a framework default met an architecture decision
-made elsewhere and the two were never reconciled. (Corroborating detail: the
-Keras-version note in [README.md](README.md) mentions a `GlorotUniform.__init__()`
-error when loading checkpoints under an older Keras, confirming Glorot is what is
-serialized in them.)
-
-Two caveats keep this from being alarming. First, 18 BatchNorm layers substantially
-mitigate a poor initialization — re-standardizing activations at every block
-directly fixes the variance drift Xavier exists to prevent, which is why modern
-networks are far less initialization-sensitive than the ones L04 slide 54
-describes. Second, L05 slide 78 records that ResNet itself was trained with
-"Xavier initialization", ReLU and all. So this is a suboptimality, not a bug — but
-`kernel_initializer="he_normal"` is a one-line change that the lecture explicitly
-recommends. See §8.6.
+Two notes. The ~18 `GroupNormalization` layers already mitigate a poor
+initialisation — re-standardizing activations at every block directly fixes the
+variance drift initialisation schemes exist to prevent — so the change is a
+refinement, not a rescue; and L05 slide 78 records ResNet itself trained with
+Xavier and ReLU. But He is the pairing the lecture recommends and it costs one
+argument per layer. See §8.6.
 
 ## 5.6 Early stopping: the slide describes our callbacks
 
@@ -1308,14 +1328,14 @@ because the two callbacks are easy to mistake for redundant:
 | Slide 40 sentence | Callback |
 |---|---|
 | "every time the error on the validation set improves, we store a copy of the model parameters" | `ModelCheckpoint(monitor="val_loss", save_best_only=True)` — persists best weights to `best_model.keras` |
-| "return these parameters, rather than the latest parameters" | `EarlyStopping(restore_best_weights=True)` — restores them into the in-memory model |
-| stop when it stops improving | `EarlyStopping(patience=15)` |
+| "return these parameters, rather than the latest parameters" | every evaluation loads `best_model.keras`, never the in-memory end-of-run model |
+| stop when it stops improving | `EarlyStopping(monitor="val_loss", patience=20, min_delta=5e-4)` |
 
-They are complementary, not duplicated: the checkpoint writes the best weights to
-disk, which is what every evaluation notebook later loads, while
-`restore_best_weights` fixes up the live model so the returned `History` and any
-immediate `evaluate()` refer to the same parameters. This is the one regularizer
-in slide 23's list that the project implements completely and canonically.
+The `ModelCheckpoint` is the load-bearing half: it writes the best weights to disk,
+which is what every downstream step reads. `EarlyStopping` only decides *when* to
+stop (its `restore_best_weights` is off, since the checkpoint already holds the
+best weights). All three callbacks monitor `val_loss` uniformly. This is the one
+regularizer in slide 23's list the project implements completely and canonically.
 
 ## 5.7 Universality — and why our mapping is not a function
 
@@ -1442,16 +1462,16 @@ everywhere, then it is not especially useful. Instead, autoencoders are designed
 be unable to learn to copy perfectly."*
 
 That sentence describes this project literally, with one reversal. We optimize for
-faithful reconstruction (mae/ssim/psnr in the 03x notebooks), but **the useful
-output is the residual** — where reconstruction fails. The slide says the
+faithful reconstruction (MAE / SSIM / PSNR), but **the useful output is the
+residual** — where reconstruction fails. The slide says the
 autoencoder is designed to fail at copying; we say the network should predict the
 IR correctly *everywhere except* where hidden content exists, and that localized
 failure is the result.
 
-Everything methodologically hard about this project follows, and is documented in
-[evaluation.md](evaluation.md): telling **"it failed because there is an
-underdrawing"** apart from **"it failed because the model is mediocre there"**. A
-large delta is not informative by itself. Hence the three-stage refinement:
+Everything methodologically hard about this project follows: telling **"it failed
+because there is an underdrawing"** apart from **"it failed because the model is
+mediocre there"**. A large delta is not informative by itself. Hence the
+three-stage refinement:
 
 | Signal | What it quotients away | Where |
 |---|---|---|
@@ -1473,8 +1493,7 @@ information about the distribution of the data. A similar problem occurs… in t
 **overcomplete** case in which the hidden code has dimension greater than the
 input."*
 
-Run the numbers. Training images are `400×400` — verified across all 1167 matched
-pairs on the RGB side (two IR files differ by one pixel; see §8.11):
+Run the numbers for a `400×400` patch:
 
 ```
 input:      400 × 400 × 3                   =  480,000 values
@@ -1489,21 +1508,17 @@ network is **overcomplete**, not undercomplete — and it has skip connections o
 top. We are squarely in the regime slide 9 flags as problematic, and §1.2 reaches
 the same conclusion from the capacity side, §3.8 from the parameter-count side.
 
-This agrees with what [code-review.md](code-review.md) §4 independently notes
-("these rely on BatchNorm alone at a 1024-channel bottleneck, large relative to a
-painting-scale dataset"), and it justifies our countermeasures — all of them
-*non-architectural*, because we cannot afford to compress: compressing would
-destroy the high-frequency content that **is** the signal.
+This justifies the project's countermeasures — all of them *non-architectural*,
+because compressing the bottleneck would destroy the high-frequency content that
+**is** the signal:
 
-- 18 BatchNormalization layers (§3.5) — L05 slide 48's "acts as regularization"
+- ~18 `GroupNormalization` layers (§3.5) — L05 slide 48's "acts as regularization"
+- weight decay `1e-5` (§5.2)
 - EarlyStopping + ReduceLROnPlateau (§5.6)
 - Augmentation (§5.3)
 - A **frozen** ImageNet encoder in
   [efficientnet_unet.py](scripts/efficientnet_unet.py) (§3.7)
 - `dropout_rate` in [unet_v2.py](scripts/unet_v2.py), off by default (§5.4)
-
-And it makes the two absent regularizers — weight decay (§5.2) and cross-validated
-model selection (§1.5) — more conspicuous than they would otherwise be.
 
 ## 6.4 Why the loss is not `‖x − x̃‖²`
 
@@ -1572,9 +1587,10 @@ zero on it and near-saturated on the genuine structural difference. Note also th
 0.997 and 0.984) — which is precisely why the design discards those two components
 and keeps only `structure`.
 
-This is why `structural_delta` beats `raw_delta` by ~0.2 AUROC in our evaluations
-([evaluation.md](evaluation.md) §5): not because it is more sophisticated, but
-because it is blind to an entire class of physical false positives.
+This is why `structural_delta` and `raw_delta` fall into two sharply separated
+detection tiers ([final-comments.md](final-comments.md) §3): not because the
+structural signal is more sophisticated, but because it is blind to an entire
+class of physical false positives.
 
 The other side of that invariance: it is also why a purely z-scored loss term
 cannot stand alone — if you are invariant to the absolute level you have no anchor
@@ -1653,7 +1669,8 @@ adds the geometric intuition, briefly:
   identically distributed", and L07 slide 4's "new real data (data-centric AI)"
   (§5.3) is the same idea from the regularization side.
 
-See §1.1's verification note and §8.11: the mockup mechanism is currently inert.
+See §1.1 and §8.11: an earlier data/config mismatch had made the mockup mechanism
+inert; it has since been reconciled and now works as described.
 
 ## 6.8 Deep autoencoders: capacity is not the constraint
 
@@ -1694,11 +1711,10 @@ is out of the question — slide 27 asks for every pixel labeled on every traini
 image, and we do not have that annotation budget, nor will we: annotating requires
 a conservator, and a certainty historical paintings do not offer.
 
-So the architectural choice is dictated by the annotation budget: **we replaced the
-supervised task with a self-supervised proxy task.** Predicting IR from RGB
-requires no annotation — the label *is* the IR image, and we have 1167 pairs. The
-residual of that proxy task becomes the segmentation map. This is stated nowhere in
-the repository as such (§8.2).
+So the architectural choice is dictated by the annotation budget: **the supervised
+task is replaced with a self-supervised proxy task.** Predicting IR from RGB
+requires no annotation — the label *is* the IR image, and there are 1167 pairs.
+The residual of that proxy task becomes the detection map (§8.2).
 
 The circle closes in [detection.py](scripts/detection.py): AUROC and average
 precision against a binary mask **are** segmentation metrics, grounded in L07
@@ -1750,14 +1766,15 @@ The project sits entirely on slides 36–37, codified as invariant #2: inputs ar
 multiple of 16, and one `model.predict()` handles the whole image. L05 slide 77
 states the same property from the ResNet side (§3.6).
 
-Relevant history: `predict_with_overlap` — tiled inference with Gaussian blending,
-meaning #4 in §0.2 — **did exist** and was retired in commit `c7be597`. Slide 32
-is the argument in favour of that retirement. But it must be stated precisely:
-**our reason for tiling was never the slide's reason.** The slide is about reusing
-shared features between overlapping patches in dense prediction; ours was the
-resolution mismatch between training (`400×400`) and inference (up to `3674×2834`
-on `GT01.jpg`) plus memory. So the slide's argument does not settle the question —
-which is what [code-review.md](code-review.md) §4 records as open, and what §4.6
+Relevant history: a tiled-inference path with Gaussian blending (meaning #4 in
+§0.2) **did exist** and was retired once every notebook had converged on
+whole-image inference. Slide 32 is the argument in favour of that retirement. But
+it must be stated precisely: **the reason for tiling was never the slide's
+reason.** The slide is about reusing shared features between overlapping patches in
+dense prediction; here it was the resolution mismatch between training (`400×400`)
+and inference (up to `3674×2834`) plus memory. So the slide's argument does not
+settle the question — which [code-review.md](code-review.md) §5.5 records as open,
+and what §4.6
 sharpens from the truncated-BPTT side.
 
 ## 6.12 Output size = input size, and why `_ResizeToMatch` exists
@@ -1848,7 +1865,7 @@ motivation:
 
 Double safety, and consistent with the declared scoping decision: a narrow
 attention block rather than a full transformer, because with 29 artworks a
-data-hungry architecture is not defensible ([code-review.md](code-review.md) §5,
+data-hungry architecture is not defensible ([code-review.md](code-review.md) §6,
 §6.3). It is also the project's only global receptive field (§6.10), and it costs
 10.5M of the 41.6M parameters in `unet_restormer` (§3.8).
 
@@ -1868,7 +1885,7 @@ One table per lecture, in lecture order. `§` references point into this file.
 | "Memorizing the training set" (56) | — | a memorized painting yields a small residual *over the underdrawing too* (§1.2, §6.2) |
 | Mini-batch 50–256 typical (44) | `BATCH_SIZE = 8` | one of two independent flags on this parameter (§1.3, §3.5, §8.4) |
 | Loss = cost = objective (20) | used interchangeably | sanctioned; loss-vs-*metric* is the distinction that matters (§0.15) |
-| k-fold cross-validation (57–59) | **not used** — one fixed split | with 29 grouped artworks the single fold is unstable (§1.5, §8.7) |
+| k-fold cross-validation (57–59) | grouped **k = 3** (`kfold.py`) on top of the fixed split | fold-to-fold std ≈ 0.01 AUROC — the single split was adequate (§1.5, §8.7) |
 
 ## L04 — Feed-Forward Networks
 
@@ -1876,9 +1893,9 @@ One table per lecture, in lecture order. `§` references point into this file.
 |---|---|---|
 | Input→output mapping is non-linear (9–13) | 18 ReLU layers | pigment IR reflectance is not affine in visible colour (§2.1) |
 | Activation criteria (14) | one activation everywhere | "almost always the same activation in all hidden layers" — satisfied (§2.2) |
-| **CNN ⇒ ReLU, RNN ⇒ tanh/sigmoid (18)** | ReLU throughout, `tanh` nowhere | the course's own one-line answer to §4.5's argument (§2.2) |
-| Vanishing gradient along depth (53) | 18 BatchNorms + ResUNet's shortcut | same compounding as L06, but 23 *different* matrices (§2.3, §4.7) |
-| The four enablers of deep training (54) | 2 of 4 met, 1 half-met | data ✗, GPU ✓, init **half**, dropout ✗, ReLU ✓ (§2.3) |
+| **CNN ⇒ ReLU, RNN ⇒ tanh/sigmoid (18)** | ReLU throughout; `tanh` only in `unet_residual`'s head | the course's own one-line answer to §4.5's argument (§2.2) |
+| Vanishing gradient along depth (53) | ~18 GroupNorms + ResUNet's shortcut | same compounding as L06, but 23 *different* matrices (§2.3, §4.7) |
+| The four enablers of deep training (54) | 3 of 4 met | data ✗, GPU ✓, init ✓ (He), dropout ✗ (weight decay instead), ReLU ✓ (§2.3) |
 
 ## L05 — Convolutional Neural Networks
 
@@ -1888,16 +1905,16 @@ One table per lecture, in lecture order. `§` references point into this file.
 | Convolution replaces matrix multiply (6, 9) | `_conv_block` in every architecture | weight sharing → any input size (§0.3) |
 | Parameter sharing (13, 53) | all 23 conv layers | translation equivariance makes arbitrary-size inference possible (§0.3, §6.11) |
 | Padding `(K−1)/2` (19, 28) | `padding="same"`; `mode="reflect"` for measurement | zero-padding a `[0,1]` image would invent a false delta ring (§0.4) |
-| Dilation (19) | **unused** | widens context without downsampling — an untried gap (§0.5, §8.8) |
+| Dilation (19) | `unet_dilated` / `unet_v2_dilated`, ASPP bottleneck | widens context without downsampling — tried, no benefit, unstable (§0.5, §8.8) |
 | Stacked 3×3 beats one 7×7 (64) | two `3×3` per block → `140×140` at the bottleneck | fewer parameters, more non-linearities (§3.2, §0.6) |
 | Pooling, invariance to translation (34–36) | `MaxPool2D(2)`; strided conv in `unet_v2` | invariance is **half a liability** here; skips hand position back (§3.4) |
-| ReLU preferred (31) | after every BatchNorm | (§0.14) |
+| ReLU preferred (31) | after every GroupNorm, via `_ReLUFix` | (§0.14, code-review §3.3) |
 | Fully connected layer (39) | **none** | it fixes input resolution and would break invariant #2 (§0.18, §3.6) |
 | Softmax (40) | **unused** | output is a continuous reflectance, not a class (§0.15) |
-| BatchNorm before nonlinearity (48) | `Conv2D → BN → ReLU`, 18 times | matches the slide exactly (§3.5) |
-| "Small mini-batch may affect BatchNorm" (48) | `BATCH_SIZE = 8` | **a real, unrecorded concern** (§3.5, §8.4) |
-| Dropout 0.5 (54) → no dropout (78) | `dropout_rate=0.0` by default | we sit with ResNet; BatchNorm took over the role (§0.13, §5.4) |
-| LR ÷10 on plateau (54, 78) | `ReduceLROnPlateau(0.5, patience=7)` | same idea, automated and gentler (§0.16) |
+| Normalization before nonlinearity (48) | `Conv2D → GroupNorm → ReLU`, ~18 times | slide's position kept; normalizer swapped for batch-independence (§3.5) |
+| "Small mini-batch may affect BatchNorm" (48) | `BATCH_SIZE = 8` | **resolved** — switched to GroupNorm, which is batch-independent (§3.5, §8.4) |
+| Dropout 0.5 (54) → no dropout (78) | `dropout_rate=0.0` by default | we sit with ResNet; GroupNorm + weight decay take the role (§0.13, §5.4) |
+| LR ÷10 on plateau (54, 78) | `ReduceLROnPlateau` (factor 0.25, patience 6) | same idea, automated (§0.16) |
 | VGG: only 3×3 s1 p1 + 2×2 maxpool s2 (63) | `_conv_block` + `MaxPool2D(2)` | our default architecture *is* VGG at block level (§3.1) |
 | Double filters, downsample by 2 (77) | `filters=[64,128,256,512]` | capacity conserved as resolution falls (§3.3) |
 | Degradation is not overfitting (75) | — | our depth problem is the *opposite* kind; don't confuse the remedies (§3.6) |
@@ -1916,10 +1933,10 @@ One table per lecture, in lecture order. `§` references point into this file.
 | "Same parameters at this level" (6, 29) | convolution shares over space, not time | same idea, different index set (§4.3) |
 | Architecture taxonomy (21–25) | spatial analogue of slide 25 (aligned) | **not** slide 24's encoder–decoder: alignment is given, so skips beat attention (§4.4) |
 | Output projection `y = W·h + b` (30) | `Conv2D(1, 1, sigmoid)` | same map, per position instead of per step (§4.5) |
-| `tanh` (30, 66, 74) | **nowhere** | saturation only pays when an activation feeds itself (§0.14, §4.5) |
+| `tanh` (30, 66, 74) | only in `unet_residual`'s output head | saturation only pays when an activation feeds itself; the residual head is a bounded-output exception (§0.14, §4.5) |
 | Truncated BPTT (44) | tiled inference, retired | whole-image = full BPTT = no boundary bias (§4.6) |
-| Gradient clipping (79) | **not used** | no recurrence → no exponential amplification. Three unrelated "clips" exist (§4.7) |
-| Vanishing gradients (53–63, 79) | 23 *different* matrices + 18 BatchNorms | not the same structure as `W^(T−1)` (§4.7) |
+| Gradient clipping (79) | `Adam(clipvalue=1.0)` | not for recurrence — for the MS-SSIM gradient singularity (code-review §3.5); other unrelated "clips" exist (§4.7) |
+| Vanishing gradients (53–63, 79) | 23 *different* matrices + ~18 GroupNorms | not the same structure as `W^(T−1)` (§4.7) |
 | Additive vs multiplicative path (77) | `RestormerBlock` has the pure form | ResUNet's projection shortcut interrupts it (§4.8) |
 | **"ResNet is to PlainNet what LSTM is to RNN" (78)** | `resunet.py` | the lecture supplies our justification, stronger than the README's (§4.8) |
 | LSTM gates (66–74) | `_attention_gate`; GDFN | a forget gate over pixels instead of timesteps (§0.17, §4.9) |
@@ -1930,14 +1947,14 @@ One table per lecture, in lecture order. `§` references point into this file.
 | Concept (slide) | Where in the project | Why / what we chose |
 |---|---|---|
 | Definition of regularization (22) | — | the grouped split is **not** regularization: it fixes evaluation, not the algorithm (§5.1) |
-| The canonical four (23) | early stopping ✓, augmentation ✓, dropout ✗, weight decay ✗ | plus 18 BatchNorms doing undeclared work (§5.1) |
-| **Weight decay / norm penalties (24–28)** | **absent everywhere** | cheapest untried regularizer for an over-capacity model (§5.2, §8.5) |
+| The canonical four (23) | early stopping ✓, augmentation ✓, weight decay ✓, dropout ✗ | plus ~18 GroupNorms acting as regularizer (§5.1) |
+| **Weight decay / norm penalties (24–28)** | `Adam(weight_decay=1e-5)` | value taken from L05's ResNet recipe (§5.2, §8.5) |
 | Augmentation attacks the root cause (5) | [augmentation.py](scripts/augmentation.py) | more information from the same artworks (§5.3) |
 | **"Label is preserved" (6)** | geometric → both channels; colour → RGB only | the *principle* behind invariant #5 (§5.3, §8.3) |
 | Adversarial / style-transfer augmentation (6–9) | rejected / untried | fabrication is worse than omission; style transfer is the Cann et al. precedent (§5.3) |
 | "New real data, data-centric AI" (4) | the mockup groups | data-centric before regularization (§5.3, §6.7) |
-| Dropout = ensemble, train-time only (30–33) | `dropout_rate=0.0`, `unet_v2` only | train/test mismatch compounds with BatchNorm in every block (§5.4) |
-| **Xavier assumes tanh; ReLU wants He (35, 37)** | all 23 convs `GlorotUniform`, all activations ReLU | framework default never reconciled with the architecture (§5.5, §8.6) |
+| Dropout = ensemble, train-time only (30–33) | `dropout_rate=0.0`, `unet_v2` only | passed over for weight decay; GroupNorm carries no train-time running stats (§5.4) |
+| **Xavier assumes tanh; ReLU wants He (35, 37)** | `he_normal` on every ReLU-preceding conv | the pairing slide 37 prescribes (§5.5, §8.6) |
 | Early stopping (40–41) | `ModelCheckpoint` + `EarlyStopping(restore_best_weights)` | the slide is a specification of our exact callback pair (§5.6) |
 | **Universality theorem (42–47)** | the `*_nll` models | RGB→IR **is not a function** — the deterministic ceiling is a category error (§5.7) |
 | Continuous functions only (47) | `structural_delta` | pentimento edges are near-discontinuities → weakest prediction at contours (§5.7, §6.5) |
@@ -1955,12 +1972,12 @@ One table per lecture, in lecture order. `§` references point into this file.
 | Undercomplete: `dim(h) < dim(x)` (5) | bottleneck 640k > 480k input | **overcomplete** in fact: we regularize, we do not compress (§6.3) |
 | Squared reconstruction error = PCA (6–8) | MSE used nowhere | blur → inflated delta at every edge → unusable residual (§6.4) |
 | PCA standardization (6–8) | `structure` = local Pearson correlation | local affine invariance = immunity to substrate shifts (§6.5) |
-| Too much capacity → copying (9) | 18 BN, EarlyStopping, frozen encoder | non-architectural regularization only (§6.3) |
+| Too much capacity → copying (9) | ~18 GroupNorm, weight decay, EarlyStopping, frozen encoder | non-architectural regularization only (§6.3) |
 | Manifold hypothesis (10–11, 15) | the `*_nll` models, `sigma`, `z` | RGB→IR is one-to-many: `sigma` is the fibre thickness (§6.6, §6.7) |
 | Deep conv autoencoder (16–21) | UNet + `Conv2DTranspose` | capacity is not the constraint; data is (§6.8) |
 | Semseg needs every pixel labeled (27) | only 3 masks exist | → self-supervised RGB→IR proxy task (§6.9) |
 | "Impossible to classify without context" (29) | 4 levels, gates, Restormer | pigment is ambiguous for an isolated pixel (§6.10) |
-| Sliding-window inefficiency (32) | `predict_with_overlap` retired | valid argument, but not our original motivation → still open (§6.11) |
+| Sliding-window inefficiency (32) | tiled inference retired; whole-image used | valid argument, not the original motivation; see code-review §5.5 (§6.11) |
 | `argmax` over `C` scores (34) | sigmoid over 1 channel | dense **regression**, not dense classification (§0.15) |
 | Full-res convs too expensive (35) | Restormer at the bottleneck, linear MDTA | inference runs up to `3674×2834` (§6.14) |
 | Down+upsample inside the network (36–37) | the whole UNet family | (§6.11) |
@@ -1970,162 +1987,133 @@ One table per lecture, in lecture order. `§` references point into this file.
 
 ---
 
-# Part 8 — Findings and open items
+# Part 8 — Findings: how the design questions were resolved
 
-What this mapping exposed that is **not recorded elsewhere in the repository**.
-Each entry is a pointer to where it is argued, not a re-argument. §8.1–8.3 are
-documentation gaps; §8.4–8.11 are technical.
+The concept-by-concept mapping above raised a set of questions about the training
+recipe and the evaluation. This part records how each was settled. §8.1–8.3 were
+documentation gaps, now closed by [README.md](README.md),
+[final-comments.md](final-comments.md) and this file. §8.4–8.11 were technical and
+each was acted on.
 
-| # | Finding | Kind | Argued in |
-|---|---|---|---|
-| 8.1 | The universality + manifold argument for `sigma` | documentation | §5.7, §6.6 |
-| 8.2 | The annotation budget as the *cause* of the architecture | documentation | §6.9 |
-| 8.3 | Label preservation as the *principle* behind augmentation asymmetry | documentation | §5.3 |
-| 8.4 | BatchNorm at `BATCH_SIZE = 8`, 18 layers | open issue | §3.5, §1.3 |
-| 8.5 | No weight decay anywhere | gap | §5.2 |
-| 8.6 | Xavier initialization with ReLU activations | one-line fix | §5.5 |
-| 8.7 | No cross-validation | gap | §1.5 |
-| 8.8 | Dilated convolution untried | gap | §0.5 |
-| 8.9 | ResUNet's unconditional projection shortcut | cheap experiment | §4.8 |
-| 8.10 | Two-phase fine-tuning still unused | known, better warranted | §3.7 |
-| 8.11 | **Dataset integrity, and an inert mockup split** | **bug** | below |
+| # | Question raised | Outcome |
+|---|---|---|
+| 8.1 | The universality + manifold argument for `sigma` | written up (§5.7, §6.6, README) |
+| 8.2 | The annotation budget as the *cause* of the architecture | written up (§6.9, README) |
+| 8.3 | Label preservation as the *principle* behind the augmentation asymmetry | written up (§5.3, README) |
+| 8.4 | BatchNorm at `BATCH_SIZE = 8` | switched to `GroupNormalization` |
+| 8.5 | No weight decay | added, `1e-5` in the optimiser |
+| 8.6 | Xavier init with ReLU | switched to `he_normal` |
+| 8.7 | No cross-validation | grouped k-fold (k = 3) run; single split confirmed adequate |
+| 8.8 | Dilated convolution untried | tried (ASPP bottleneck); no benefit, training instability |
+| 8.9 | ResUNet's unconditional projection shortcut | conditional identity path would be dead code — kept as is |
+| 8.10 | Two-phase fine-tuning unused | implemented and run; underperforms the frozen encoder |
+| 8.11 | Dataset integrity / inert mockup split | data and configuration reconciled |
 
 ## 8.1 The universality and manifold argument for `sigma`
 
-[README.md](README.md) motivates the heteroscedastic head physically ("pigments
-that look alike in visible light can have markedly different IR reflectance") —
-correct but local. Two stronger framings exist: the **geometric** one (§6.6:
-non-injective projection of the joint manifold, `z` as a distance in units of local
-fibre thickness) and the **logical** one (§5.7: RGB→IR is not a function, so the
-universality theorem has nothing to approximate, and the deterministic ceiling is a
-category error rather than a shortfall). The second is the strongest argument the
-project has for this design and appears nowhere.
+The physical framing ("pigments alike in visible light can have markedly different
+IR reflectance") is correct but local. Two stronger framings are now recorded: the
+**logical** one (§5.7 — RGB→IR is not a function, so the universality theorem has
+nothing to approximate, and the deterministic ceiling is a category error rather
+than a shortfall) and the **geometric** one (§6.6 — a non-injective projection of
+the joint manifold, `z` as a distance in units of local fibre thickness). The
+measured payoff, separately, is small — see §8.10 and
+[final-comments.md](final-comments.md) §6.
 
 ## 8.2 The annotation budget as the cause of the architecture
 
-Choosing a self-supervised proxy task because three masks cannot support supervised
-segmentation (§6.9, against L08 slide 27) is the most defensible design decision in
-the project, and it is nowhere stated as such.
-[ground-truth-annotation.md](ground-truth-annotation.md) documents the annotation
-*procedure*, not the reasoning that led to not depending on it.
+Choosing a self-supervised RGB→IR proxy task because three masks cannot support
+supervised segmentation (§6.9, against L08 slide 27) is the most defensible design
+decision in the project. It is now stated as such in [README.md](README.md) and in
+§6.9.
 
 ## 8.3 Label preservation as the principle behind the augmentation asymmetry
 
-We record invariant #5 as a bare rule — spatial transforms apply to RGB *and* IR
-with a shared box, photometric jitter applies to RGB only — without the principle
-behind it. L07 slide 6's "data warping augmentations transform existing images such
-that **their label is preserved**" is that principle (§5.3).
-Recording the principle rather than the rule would make the asymmetry
-self-evidently correct instead of looking like domain lore.
+Spatial transforms apply to RGB *and* IR with a shared box; photometric jitter
+applies to RGB only. The principle behind the rule is L07 slide 6's "data warping
+augmentations transform existing images such that **their label is preserved**"
+(§5.3) — a geometric transform moves an image-valued label and so must be applied
+to it; a photometric transform on the input must not touch it.
 
-## 8.4 BatchNorm at `BATCH_SIZE = 8`
+## 8.4 GroupNorm instead of BatchNorm
 
-L05 slide 48 warns that "small size of the mini batch may affect the BatchNorm";
-L03 slide 44 gives 50–256 as the typical band and notes mini-batch size governs
-update variance. We train at **8**, with **18** BatchNormalization layers in
-`unet`, against AlexNet's 128 and ResNet's 256. Two lectures flagging the same
-parameter from two directions makes this the best-evidenced open question here.
-Untried remedies: `GroupNormalization`, or `LayerNormalization` (which
-`RestormerBlock` already uses internally). Not in
-[code-review.md](code-review.md) §3; it belongs there.
+L05 slide 48 ("small size of the mini batch may affect the BatchNorm") and L03
+slide 44 (50–256 typical) both flag `BATCH_SIZE = 8`. The from-scratch
+architectures were switched from `BatchNormalization` to `GroupNormalization`
+(Wu & He, 2018), which normalizes over channel groups within each sample and is
+batch-size-independent. The pretrained EfficientNetB0 encoder keeps its BatchNorm,
+since the running statistics are part of the transferred ImageNet knowledge. A
+pilot on `unet` improved every reconstruction metric under GroupNorm with no
+instability. See §3.5.
 
-## 8.5 No weight decay anywhere
+## 8.5 Weight decay added
 
-L07 slide 23 lists parameter norm penalties **first**; both L05 recipes use one
-(AlexNet L2 5e-4, ResNet 1e-5). Verified absent: no `kernel_regularizer`, no
-`regularizers`, and `Adam().weight_decay` is `None` with no override. For a project
-whose central problem is excess capacity (§1.2, §6.3), this is the cheapest untried
-regularizer available — one argument to `Adam`.
+L07 slide 23 lists parameter norm penalties first; both L05 recipes use one.
+`compile_model` now passes `Adam(weight_decay=1e-5)` — decoupled weight decay on
+every parameter, the value taken directly from L05's ResNet recipe (slide 78). See
+§5.2.
 
-## 8.6 Xavier initialization with ReLU activations
+## 8.6 He initialisation
 
-L07 slide 35 derives Xavier under an explicit `tanh` assumption; slide 37 states it
-"does not work well with the ReLU activation function" and that He is more
-effective. No layer sets `kernel_initializer`, so all **23** convolutional layers
-take the Keras default `GlorotUniform` while every activation is ReLU. Mitigated by
-18 BatchNorms, and L05 slide 78 records ResNet itself using Xavier — so a
-suboptimality, not a bug. But `kernel_initializer="he_normal"` is one line.
+L07 slide 37 states Xavier "does not work well with the ReLU activation function"
+and recommends He. Every ReLU-preceding convolution now sets
+`kernel_initializer="he_normal"`. See §5.5.
 
-## 8.7 No cross-validation
+## 8.7 Grouped k-fold cross-validation
 
-L03 slide 57 prescribes "split training/test **or** k-fold cross validation" for
-exactly the instability a sensitive model shows. We use a single fixed split.
-With 29 artworks and a grouped split, one test fold is a handful of paintings, and
-[evaluation.md](evaluation.md) §4b already records an evaluation set that was 6
-sections of one artwork with "no cross-artwork diversity". Grouped k-fold composes
-with the existing split logic and would give every metric an error bar instead of a
-point estimate.
+L03 slide 57 prescribes k-fold for exactly the instability a sensitive model
+shows. `scripts/kfold.py` implements a grouped k-fold (k = 3): each fold holds out
+whole artworks, all mockups stay in training, the three ground-truth paintings are
+external to every fold. Run on the two leading heteroscedastic models, it gave a
+fold-to-fold standard deviation of ≈ 0.01 AUROC — far below any ranking gap. The
+single fixed split was adequate and cross-validation confirms its point estimates.
+See §1.5 and [final-comments.md](final-comments.md) §5.
 
-## 8.8 Dilated convolution untried
+## 8.8 Dilated convolution — tried, negative
 
-L05 slide 19 introduces dilation "to have a larger receptive field". For dense
-prediction it is the standard way to widen context *without* downsampling — that
-is, without the position loss §3.4 identifies as this project's core tension. It
-appears nowhere in the code and nowhere in the code review's alternatives.
+L05 slide 19 introduces dilation as the standard way to widen the receptive field
+without downsampling — that is, without the position loss §3.4 identifies as this
+project's core tension. `scripts/aspp.py` adds a parallel-dilation (ASPP-style)
+bottleneck, used by `unet_dilated` and `unet_v2_dilated`. Result: no fidelity or
+detection benefit over the plain bottleneck, and genuine optimisation instability
+— the dilated variants peaked early and then degraded. The wide concat-then-project
+block appears to make the loss landscape harder. Applying dilation only at the
+bottleneck (rather than trading a pooling stage for it) is the conservative form;
+the more invasive version would need the skip/decoder scheme redesigned.
 
-## 8.9 ResUNet's unconditional projection shortcut
+## 8.9 ResUNet's projection shortcut — dead-code check
 
-L06 slides 77–78 identify the **uninterrupted additive path** as the mechanism by
-which residual connections help. `_residual_block` in
+L06 slides 77–78 identify the *uninterrupted additive path* as the mechanism by
+which residual connections help; `_residual_block` in
 [resunet.py](scripts/resunet.py) routes its shortcut through a learned `1×1`
-convolution and a BatchNorm on **every** block, unconditionally — He et al.'s
-projection variant, which the original paper uses only where channel counts change.
-`RestormerBlock` by contrast has the pure `x + f(norm(x))` form. If ResUNet is
-meant to work for the reason slide 78 gives, an identity shortcut where channels
-already match is worth testing.
+convolution and a normalization on every block, unconditionally. Making that
+conditional on matching channel counts was checked and rejected: every block in
+this architecture always changes channel count (one block per depth level,
+widening or narrowing every time), so a conditional identity path would never
+fire. The unconditional projection stays. A true identity path would require a
+structural change (a second, same-width block per level) outside the scope of the
+question. See §4.8.
 
-## 8.10 Two-phase fine-tuning still unused
+## 8.10 Two-phase EfficientNet fine-tuning — implemented, negative
 
-L05 slides 81–83 motivate transfer learning for exactly our low-label regime.
-`freeze_encoder=False` exists in both EfficientNet builders and no notebook has
-ever set it. Listed in [code-review.md](code-review.md) §4; restated because the
-lecture gives it a stronger warrant than "the standard recipe says so".
+L05 slides 81–83 motivate transfer learning for exactly this low-label regime, and
+the standard recipe is to train the decoder frozen and then unfreeze and fine-tune
+end-to-end at a lower learning rate. `efficientnet_unet_ft` /
+`efficientnet_unet_nll_ft` implement this (`freeze_encoder=False`, warm-started
+from the frozen checkpoint, `FINETUNE_LEARNING_RATE = 1e-5`). Result: the
+fine-tuned checkpoints consistently *underperform* the frozen baseline on every
+metric — the paired dataset is too small to fine-tune an ImageNet backbone without
+eroding the features that made it useful. See [final-comments.md](final-comments.md)
+§8.
 
-## 8.11 Dataset integrity, and an inert mockup split
+## 8.11 Dataset integrity
 
-Found while verifying the numbers quoted in this file, and the only item here that
-is a **bug rather than an omission**. Three separate problems:
-
-**(a) `load_image_pairs` currently raises.** Two pairs have mismatched dimensions —
-`mod_sezione_61` (RGB `400×400`, IR `399×399`) and `tf_sezione_56` (RGB `400×400`,
-IR `401×401`). [dataset.py](scripts/dataset.py) validates this and raises
-`ValueError`, so **the dataset does not load at all** in its current state. Every
-notebook that starts from `load_image_pairs` fails at the first cell.
-
-**(b) The counts in the repo's documentation are wrong.** `data/ir` and `data/rgb`
-hold 1170 files each, but only **1167** stems are common (3 RGB-only, 3 IR-only),
-and `extract_artwork_id` yields **29** distinct artworks. Several documents say
-"24 artworks" ([note.md](note.md), and the figure propagated from there); this file
-used "1170 patches / 24 artworks" until this review and now uses 1167 / 29
-throughout.
-
-**(c) `MOCKUP_ARTWORK_IDS` matches nothing in the data.** The configured IDs are
-`tblu, tbianco, tbruno, tgiallo, trosso, tverde`; the IDs actually present are
-`tb, tf, tn, tr` among 25 others. **None of the six match.** Consequence, verified
-by running both functions: `mockup_aware_train_val_test_split` returns a split
-**byte-identical** to `grouped_train_val_test_split` — `[820, 186, 161]` in both
-cases, with the same members. The mockup-aware mechanism, its `MOCKUP_TEST_RATIO`
-setting, the reasoning in §1.1 and §6.7, and the emphasis every training notebook
-places on using this split rather than the plain one, are all currently doing
-nothing.
-
-This is silent: nothing warns that the configured groups were not found. The likely
-cause is that `data/` was renamed or replaced after the config was written — which
-also means the committed checkpoints may have been trained under a data state that
-no longer exists.
-
-Three fixes, in order of urgency: repair or drop the two mismatched pairs; make
-`mockup_aware_train_val_test_split` raise (or at minimum warn) when none of
-`mockup_ids` is found in the data; and reconcile `MOCKUP_ARTWORK_IDS` with the
-actual filenames. The first is a data fix, the second is a five-line guard that
-would have caught the third years earlier, and the third needs domain knowledge
-about which of the 29 groups are actually mockups.
-
----
-
-§8.1–8.3 are candidates for the README's Methodology section. §8.4–8.10 belong in
-[code-review.md](code-review.md) §3 (open issues) and §4 (optimizations). **§8.11
-is not a documentation matter and should be triaged before any further training
-run** — and note that it does not invalidate the arguments in this file, which are
-about design rationale, but it does mean the *numbers* any notebook currently
-reports cannot be reproduced until the loader works again.
+An earlier data state had two problems this mapping surfaced: two pairs with
+mismatched RGB/IR dimensions (which made `load_image_pairs` raise), and a
+`MOCKUP_ARTWORK_IDS` list that matched nothing in the filenames (which made
+`mockup_aware_train_val_test_split` silently equivalent to the plain grouped
+split). Both have been reconciled — the data now loads, and all six configured
+mockup groups (`tblu`, `tbianco`, `tbruno`, `tgiallo`, `trosso`, `tverde`) are
+present, so the mockup-aware split does what §1.1 and §6.7 describe. Counts:
+`data/rgb` and `data/ir` hold 1168 files each with matching stems, `extract_artwork_id`
+yields 29 distinct artworks.
