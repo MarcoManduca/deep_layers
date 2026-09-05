@@ -42,7 +42,7 @@ RGB » real IR » predicted IR » residual
 ### Problem framing
 
 Infrared reflectography is a standard non-invasive tool in art conservation:
-carbon-based underdrawing materials (charcoal, black chalk, ink) absorb IR
+carbon-based underdrawing materials (charcoal, black chalk) absorb IR
 differently from most paint layers, so they show through in an IR image that the
 visible surface hides.
 

@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="Fifteen models: one U-Net backbone, one component varied at a time, crossed with a deterministic and a heteroscedastic output head.">
+<title>Architecture set — deep_layers</title>
+<desc>A left-to-right tree. The trunk is a fully-convolutional U-Net encoder-decoder. Six branches label the component that varies: baseline, conv block, bottleneck, up/down sampling, output head, pretrained encoder. Ten leaf architectures each carry two badges showing whether a deterministic and a heteroscedastic version was trained: ten deterministic and five heteroscedastic checkpoints, fifteen models in total.</desc>
+
+<defs>
+  <path id="star" d="M0,-8.5 L2.12,-2.91 L8.08,-2.63 L3.42,1.11 L5,6.88 L0,3.6 L-5,6.88 L-3.42,1.11 L-8.08,-2.63 L-2.12,-2.91 Z"/>
+</defs>
+
+<!-- ground -->
+<rect x="0" y="0" width="1600" height="900" rx="10" fill="none"/>#substitute the color with "none" to transparent backgroud (old: #FCFBF8)
+<rect x="0.75" y="0.75" width="1598.5" height="898.5" rx="10" fill="none" stroke="none" stroke-width="1.5"/>
+
+<g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+
+  <!-- ── head-column bands ─────────────────────────────────────────── -->
+  <rect x="1018" y="96" width="124" height="632" rx="8" fill="#8C4A2F" opacity="0.045"/>
+  <rect x="1168" y="96" width="124" height="632" rx="8" fill="#c4c5c5" opacity="0.05"/>
+
+  <text x="1080" y="135" font-size="10.5" font-weight="600" fill="#8C4A2F" letter-spacing="0.1em" text-anchor="middle">DETERMINISTIC</text>
+
+  <text x="1230" y="135" font-size="10.5" font-weight="600" fill="#2F5A6E" letter-spacing="0.1em" text-anchor="middle">HETEROSCEDASTIC</text>
+
+  <line x1="1018" y1="168" x2="1292" y2="168" stroke="#D8D2C7" stroke-width="1"/>
+
+  <!-- ── root ──────────────────────────────────────────────────────── -->
+  <rect x="60" y="392" width="280" height="100" rx="7" fill="none" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="60" y="392" width="4" height="100" rx="2" fill="#2F5A6E"/>
+  <text x="88" y="428" font-size="20" font-weight="600" fill="#2F5A6E">U-Net</text>
+  <text x="88" y="452" font-size="12.5" fill="#4A443C">encoder-decoder</text>
+  <text x="88" y="471" font-size="12.5" fill="#4A443C">fully convolutional</text>
+
+  <!-- ── trunk + spine ─────────────────────────────────────────────── -->
+  <g stroke="#B9B1A4" stroke-width="1.3" fill="none" stroke-linecap="round">
+    <line x1="340" y1="452" x2="390" y2="452"/>
+    <line x1="390" y1="200" x2="390" y2="676"/>
+
+    <!-- branch edges -->
+    <line x1="390" y1="200" x2="660" y2="200"/>
+    <line x1="390" y1="284" x2="640" y2="284"/>
+    <line x1="390" y1="424" x2="640" y2="424"/>
+    <line x1="390" y1="536" x2="660" y2="536"/>
+    <line x1="390" y1="592" x2="660" y2="592"/>
+    <line x1="390" y1="676" x2="640" y2="676"/>
+
+    <!-- group sub-spines + leaf stubs -->
+    <line x1="640" y1="256" x2="640" y2="312"/>
+    <line x1="640" y1="256" x2="660" y2="256"/>
+    <line x1="640" y1="312" x2="660" y2="312"/>
+
+    <line x1="640" y1="368" x2="640" y2="480"/>
+    <line x1="640" y1="368" x2="660" y2="368"/>
+    <line x1="640" y1="424" x2="660" y2="424"/>
+    <line x1="640" y1="480" x2="660" y2="480"/>
+
+    <line x1="640" y1="648" x2="640" y2="704"/>
+    <line x1="640" y1="648" x2="660" y2="648"/>
+    <line x1="640" y1="704" x2="660" y2="704"/>
+  </g>
+
+  <!-- ── branch labels (on the edge) ───────────────────────────────── -->
+  <g font-size="11" font-weight="600" fill="#6E6559" letter-spacing="0.09em" text-anchor="middle">
+    <text x="515" y="191">BASELINE</text>
+    <text x="515" y="275">CONV BLOCK</text>
+    <text x="515" y="415">BOTTLENECK</text>
+    <text x="515" y="527">UP / DOWN SAMPLING</text>
+    <text x="515" y="583">OUTPUT HEAD</text>
+    <text x="515" y="667">PRETRAINED ENCODER</text>
+  </g>
+
+  <!-- ── leaf names ────────────────────────────────────────────────── -->
+  <g font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#1E1B17">
+    <text x="668" y="205">unet</text>
+    <text x="668" y="261">resunet</text>
+    <text x="668" y="317">attention_unet</text>
+    <text x="668" y="373">unet_dilated</text>
+    <text x="668" y="429">unet_v2_dilated</text>
+    <text x="668" y="485">unet_restormer</text>
+    <text x="668" y="541">unet_v2</text>
+    <text x="668" y="597">unet_residual</text>
+    <text x="668" y="653">efficientnet_unet</text>
+    <text x="668" y="709">efficientnet_unet_ft</text>
+  </g>
+
+  <!-- ── leaf descriptors ──────────────────────────────────────────── -->
+  <g font-size="12" fill="#857D72">
+    <text x="858" y="205">the baseline</text>
+    <text x="858" y="261">residual blocks</text>
+    <text x="858" y="317">attention gates on skips</text>
+    <text x="858" y="373">ASPP bottleneck</text>
+    <text x="858" y="429">ASPP + v2</text>
+    <text x="858" y="485">transposed self-attention</text>
+    <text x="858" y="541">strided down &#183; resize up</text>
+    <text x="858" y="597">signed residual on grey</text>
+    <text x="858" y="653">ImageNet encoder, frozen</text>
+    <text x="858" y="709">encoder unfrozen</text>
+  </g>
+
+  <!-- ── leader dots ───────────────────────────────────────────────── -->
+  <g stroke="#C9C2B6" stroke-width="1.2" stroke-dasharray="1 4.5" stroke-linecap="round">
+    <line x1="1020" y1="200" x2="1058" y2="200"/>
+    <line x1="1020" y1="256" x2="1058" y2="256"/>
+    <line x1="1020" y1="312" x2="1058" y2="312"/>
+    <line x1="1020" y1="368" x2="1058" y2="368"/>
+    <line x1="1020" y1="424" x2="1058" y2="424"/>
+    <line x1="1020" y1="480" x2="1058" y2="480"/>
+    <line x1="1020" y1="536" x2="1058" y2="536"/>
+    <line x1="1020" y1="592" x2="1058" y2="592"/>
+    <line x1="1020" y1="648" x2="1058" y2="648"/>
+    <line x1="1020" y1="704" x2="1058" y2="704"/>
+  </g>
+
+  <!-- ── deterministic badges: all ten filled ──────────────────────── -->
+  <g fill="#8C4A2F">
+    <circle cx="1080" cy="200" r="8.5"/>
+    <circle cx="1080" cy="256" r="8.5"/>
+    <circle cx="1080" cy="312" r="8.5"/>
+    <circle cx="1080" cy="368" r="8.5"/>
+    <circle cx="1080" cy="424" r="8.5"/>
+    <circle cx="1080" cy="480" r="8.5"/>
+    <circle cx="1080" cy="536" r="8.5"/>
+    <circle cx="1080" cy="592" r="8.5"/>
+    <circle cx="1080" cy="648" r="8.5"/>
+    <circle cx="1080" cy="704" r="8.5"/>
+  </g>
+
+  <!-- ── leader dots ───────────────────────────────────────────────── -->
+  <g stroke="#C9C2B6" stroke-width="1.2" stroke-dasharray="1 4.5" stroke-linecap="round">
+    <line x1="1170" y1="200" x2="1208" y2="200"/>
+    <line x1="1170" y1="256" x2="1208" y2="256"/>
+    <line x1="1170" y1="312" x2="1208" y2="312"/>
+    <line x1="1170" y1="648" x2="1208" y2="648"/>
+    <line x1="1170" y1="704" x2="1208" y2="704"/>
+  </g>
+
+  <!-- ── heteroscedastic badges: five filled, five not crossed ─────── -->
+  <g fill="#2F5A6E">
+    <circle cx="1230" cy="200" r="8.5"/>
+    <circle cx="1230" cy="256" r="8.5"/>
+    <circle cx="1230" cy="312" r="8.5"/>
+    <circle cx="1230" cy="648" r="8.5"/>
+    <circle cx="1230" cy="704" r="8.5"/>
+  </g>
+  <g fill="none" stroke="#A8A197" stroke-width="1.4" stroke-dasharray="2 2.8">
+    <circle cx="1230" cy="368" r="8.5"/>
+    <circle cx="1230" cy="424" r="8.5"/>
+    <circle cx="1230" cy="480" r="8.5"/>
+    <circle cx="1230" cy="536" r="8.5"/>
+    <circle cx="1230" cy="592" r="8.5"/>
+  </g>
+
+  <!-- ── badge legend ──────────────────────────────────────────────── -->
+  <circle cx="1026" cy="752" r="5.5" fill="#6E6559"/>
+  <text x="1038" y="756" font-size="11" fill="#857D72">trained</text>
+  <circle cx="1116" cy="752" r="5.5" fill="none" stroke="#A8A197" stroke-width="1.3" stroke-dasharray="2 2.8"/>
+  <text x="1128" y="756" font-size="11" fill="#857D72">not crossed</text>
+
+  <!-- ── counts ────────────────────────────────────────────────────── -->
+  <text x="1080" y="756" font-size="0" fill="none"> </text>
+
+
+</g>
+</svg>

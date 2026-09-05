@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1000" width="1800" height="1000" role="img" aria-label="The baseline U-Net: four encoder levels of Conv, GroupNorm and ReLU with max pooling, a 1024-channel bottleneck, four decoder levels with transposed convolution and concatenation, and four skip connections carrying encoder features across to the decoder.">
+<title>U-Net baseline &#8212; deep_layers</title>
+<desc>A V-shaped diagram reading left to right. Each of the nine blocks is drawn as six vertical strips: Conv, GroupNorm, ReLU, twice. Channels run 64, 128, 256, 512 down the encoder, 1024 at the bottleneck, then 512, 256, 128, 64 back up the decoder. Dashed lines carry each encoder level's features to the matching decoder level, where a filled circle marks the concatenation. The output is a 1 by 1 convolution with a sigmoid.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#8F877C"/>
+  </marker>
+  <marker id="arrowacc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#9A7B1F"/>
+  </marker>
+</defs>
+<g font-family="Arial, Helvetica, sans-serif">
+  <rect x="0" y="0" width="1800" height="1000" rx="10" fill="#FCFBF8"/>
+  <rect x="0.75" y="0.75" width="1798.5" height="998.5" rx="10" fill="none" stroke="#E4DFD4" stroke-width="1.5"/>
+  <text x="60" y="58" font-size="21" fill="#1E1B17" font-weight="bold">U-Net baseline</text>
+  <text x="60" y="82" font-size="12.5" fill="#857D72">the backbone every other architecture in the set varies from &#183; 4 levels, 64 &#8594; 1024 channels &#183; fully convolutional</text>
+  <text x="390" y="140" font-size="11" fill="#857D72" text-anchor="middle" font-weight="bold" letter-spacing="0.14em">ENCODER</text>
+  <text x="1334" y="140" font-size="11" fill="#857D72" text-anchor="middle" font-weight="bold" letter-spacing="0.14em">DECODER</text>
+  <line x1="218" y1="210" x2="1469" y2="210" stroke="#9A7B1F" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrowacc)"/>
+  <line x1="390" y1="330" x2="1297" y2="330" stroke="#9A7B1F" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrowacc)"/>
+  <line x1="562" y1="450" x2="1125" y2="450" stroke="#9A7B1F" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrowacc)"/>
+  <line x1="734" y1="570" x2="953" y2="570" stroke="#9A7B1F" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrowacc)"/>
+  <text x="843" y="202" font-size="10.5" fill="#9A7B1F" text-anchor="middle" font-weight="bold">skip connection</text>
+  <rect x="46" y="160" width="54" height="100" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <text x="73" y="215" font-size="13" fill="#1E1B17" text-anchor="middle" font-weight="bold">RGB</text>
+  <text x="73" y="278" font-size="10.5" fill="#857D72" text-anchor="middle" font-family="Consolas, Menlo, Courier New, monospace">(H, W, 3)</text>
+  <line x1="100" y1="210" x2="126" y2="210" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="130" y="160.0" width="88" height="100" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="136" y="164.0" width="11" height="92" rx="1.5" fill="#2F5A6E"/>
+  <rect x="149" y="164.0" width="11" height="92" rx="1.5" fill="#B9B1A4"/>
+  <rect x="162" y="164.0" width="11" height="92" rx="1.5" fill="#8C4A2F"/>
+  <rect x="175" y="164.0" width="11" height="92" rx="1.5" fill="#2F5A6E"/>
+  <rect x="188" y="164.0" width="11" height="92" rx="1.5" fill="#B9B1A4"/>
+  <rect x="201" y="164.0" width="11" height="92" rx="1.5" fill="#8C4A2F"/>
+  <text x="174.0" y="278.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">64</text>
+  <rect x="302" y="288.0" width="88" height="84" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="308" y="292.0" width="11" height="76" rx="1.5" fill="#2F5A6E"/>
+  <rect x="321" y="292.0" width="11" height="76" rx="1.5" fill="#B9B1A4"/>
+  <rect x="334" y="292.0" width="11" height="76" rx="1.5" fill="#8C4A2F"/>
+  <rect x="347" y="292.0" width="11" height="76" rx="1.5" fill="#2F5A6E"/>
+  <rect x="360" y="292.0" width="11" height="76" rx="1.5" fill="#B9B1A4"/>
+  <rect x="373" y="292.0" width="11" height="76" rx="1.5" fill="#8C4A2F"/>
+  <text x="346.0" y="390.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">128</text>
+  <rect x="474" y="415.0" width="88" height="70" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="480" y="419.0" width="11" height="62" rx="1.5" fill="#2F5A6E"/>
+  <rect x="493" y="419.0" width="11" height="62" rx="1.5" fill="#B9B1A4"/>
+  <rect x="506" y="419.0" width="11" height="62" rx="1.5" fill="#8C4A2F"/>
+  <rect x="519" y="419.0" width="11" height="62" rx="1.5" fill="#2F5A6E"/>
+  <rect x="532" y="419.0" width="11" height="62" rx="1.5" fill="#B9B1A4"/>
+  <rect x="545" y="419.0" width="11" height="62" rx="1.5" fill="#8C4A2F"/>
+  <text x="518.0" y="503.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">256</text>
+  <rect x="646" y="541.0" width="88" height="58" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="652" y="545.0" width="11" height="50" rx="1.5" fill="#2F5A6E"/>
+  <rect x="665" y="545.0" width="11" height="50" rx="1.5" fill="#B9B1A4"/>
+  <rect x="678" y="545.0" width="11" height="50" rx="1.5" fill="#8C4A2F"/>
+  <rect x="691" y="545.0" width="11" height="50" rx="1.5" fill="#2F5A6E"/>
+  <rect x="704" y="545.0" width="11" height="50" rx="1.5" fill="#B9B1A4"/>
+  <rect x="717" y="545.0" width="11" height="50" rx="1.5" fill="#8C4A2F"/>
+  <text x="690.0" y="617.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">512</text>
+  <rect x="818" y="666.0" width="88" height="48" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="824" y="670.0" width="11" height="40" rx="1.5" fill="#2F5A6E"/>
+  <rect x="837" y="670.0" width="11" height="40" rx="1.5" fill="#B9B1A4"/>
+  <rect x="850" y="670.0" width="11" height="40" rx="1.5" fill="#8C4A2F"/>
+  <rect x="863" y="670.0" width="11" height="40" rx="1.5" fill="#2F5A6E"/>
+  <rect x="876" y="670.0" width="11" height="40" rx="1.5" fill="#B9B1A4"/>
+  <rect x="889" y="670.0" width="11" height="40" rx="1.5" fill="#8C4A2F"/>
+  <text x="862.0" y="732.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">1024</text>
+  <rect x="990" y="541.0" width="88" height="58" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="996" y="545.0" width="11" height="50" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1009" y="545.0" width="11" height="50" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1022" y="545.0" width="11" height="50" rx="1.5" fill="#8C4A2F"/>
+  <rect x="1035" y="545.0" width="11" height="50" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1048" y="545.0" width="11" height="50" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1061" y="545.0" width="11" height="50" rx="1.5" fill="#8C4A2F"/>
+  <text x="1034.0" y="617.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">512</text>
+  <rect x="1162" y="415.0" width="88" height="70" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="1168" y="419.0" width="11" height="62" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1181" y="419.0" width="11" height="62" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1194" y="419.0" width="11" height="62" rx="1.5" fill="#8C4A2F"/>
+  <rect x="1207" y="419.0" width="11" height="62" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1220" y="419.0" width="11" height="62" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1233" y="419.0" width="11" height="62" rx="1.5" fill="#8C4A2F"/>
+  <text x="1206.0" y="503.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">256</text>
+  <rect x="1334" y="288.0" width="88" height="84" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="1340" y="292.0" width="11" height="76" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1353" y="292.0" width="11" height="76" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1366" y="292.0" width="11" height="76" rx="1.5" fill="#8C4A2F"/>
+  <rect x="1379" y="292.0" width="11" height="76" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1392" y="292.0" width="11" height="76" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1405" y="292.0" width="11" height="76" rx="1.5" fill="#8C4A2F"/>
+  <text x="1378.0" y="390.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">128</text>
+  <rect x="1506" y="160.0" width="88" height="100" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <rect x="1512" y="164.0" width="11" height="92" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1525" y="164.0" width="11" height="92" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1538" y="164.0" width="11" height="92" rx="1.5" fill="#8C4A2F"/>
+  <rect x="1551" y="164.0" width="11" height="92" rx="1.5" fill="#2F5A6E"/>
+  <rect x="1564" y="164.0" width="11" height="92" rx="1.5" fill="#B9B1A4"/>
+  <rect x="1577" y="164.0" width="11" height="92" rx="1.5" fill="#8C4A2F"/>
+  <text x="1550.0" y="278.0" font-size="12.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">64</text>
+  <line x1="218" y1="210" x2="302" y2="330" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="390" y1="330" x2="474" y2="450" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="562" y1="450" x2="646" y2="570" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="734" y1="570" x2="818" y2="690" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="272" y="266" font-size="10.5" fill="#857D72">MaxPool 2&#215;2</text>
+  <text x="442.0" y="386.0" font-size="10.5" fill="#857D72">/2</text>
+  <text x="614.0" y="506.0" font-size="10.5" fill="#857D72">/2</text>
+  <text x="786.0" y="626.0" font-size="10.5" fill="#857D72">/2</text>
+  <line x1="906" y1="690" x2="953" y2="570" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <circle cx="962" cy="570" r="9" fill="#1E1B17"/>
+  <line x1="971" y1="570" x2="988" y2="570" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1078" y1="570" x2="1125" y2="450" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <circle cx="1134" cy="450" r="9" fill="#1E1B17"/>
+  <line x1="1143" y1="450" x2="1160" y2="450" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1250" y1="450" x2="1297" y2="330" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <circle cx="1306" cy="330" r="9" fill="#1E1B17"/>
+  <line x1="1315" y1="330" x2="1332" y2="330" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1422" y1="330" x2="1469" y2="210" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <circle cx="1478" cy="210" r="9" fill="#1E1B17"/>
+  <line x1="1487" y1="210" x2="1504" y2="210" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="950" y="648" font-size="10.5" fill="#857D72">Conv2DTranspose 2&#215;2, stride 2</text>
+  <text x="1111.5" y="506.0" font-size="10.5" fill="#857D72">&#215;2</text>
+  <text x="1283.5" y="386.0" font-size="10.5" fill="#857D72">&#215;2</text>
+  <text x="1455.5" y="266.0" font-size="10.5" fill="#857D72">&#215;2</text>
+  <text x="862" y="756" font-size="10.5" fill="#857D72" text-anchor="middle" font-weight="bold" letter-spacing="0.14em">BOTTLENECK</text>
+  <line x1="1594" y1="210" x2="1696" y2="210" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="1647" y="196" font-size="10" fill="#857D72" text-anchor="middle">Conv 1&#215;1 &#183; sigmoid</text>
+  <rect x="1700" y="160" width="54" height="100" rx="4" fill="#FFFFFF" stroke="#D8D2C7" stroke-width="1.2"/>
+  <text x="1727" y="215" font-size="13" fill="#1E1B17" text-anchor="middle" font-weight="bold">IR</text>
+  <text x="1727" y="278" font-size="10.5" fill="#857D72" text-anchor="middle" font-family="Consolas, Menlo, Courier New, monospace">(H, W, 1)</text>
+  <text x="60" y="806" font-size="10" fill="#9C948A" font-weight="bold" letter-spacing="0.13em">CONV BLOCK &#8212; IDENTICAL AT EVERY STAGE</text>
+  <rect x="68" y="826" width="36" height="58" rx="2.5" fill="#2F5A6E"/>
+  <text x="86" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">Conv 3&#215;3</text>
+  <text x="86" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">f &#183; no bias</text>
+  <line x1="104" y1="855" x2="159" y2="855" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="163" y="826" width="36" height="58" rx="2.5" fill="#B9B1A4"/>
+  <text x="181" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">GroupNorm</text>
+  <text x="181" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">32 groups</text>
+  <line x1="199" y1="855" x2="254" y2="855" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="258" y="826" width="36" height="58" rx="2.5" fill="#8C4A2F"/>
+  <text x="276" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">ReLU</text>
+  <text x="276" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">max(x, 0)</text>
+  <line x1="294" y1="855" x2="349" y2="855" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="353" y="826" width="36" height="58" rx="2.5" fill="#2F5A6E"/>
+  <text x="371" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">Conv 3&#215;3</text>
+  <text x="371" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">f &#183; no bias</text>
+  <line x1="389" y1="855" x2="444" y2="855" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="448" y="826" width="36" height="58" rx="2.5" fill="#B9B1A4"/>
+  <text x="466" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">GroupNorm</text>
+  <text x="466" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">32 groups</text>
+  <line x1="484" y1="855" x2="539" y2="855" stroke="#8F877C" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="543" y="826" width="36" height="58" rx="2.5" fill="#8C4A2F"/>
+  <text x="561" y="902" font-size="10.5" fill="#1E1B17" text-anchor="middle" font-weight="bold">ReLU</text>
+  <text x="561" y="917" font-size="9.5" fill="#9C948A" text-anchor="middle">max(x, 0)</text>
+  <text x="60" y="946" font-size="10" fill="#9C948A" font-family="Consolas, Menlo, Courier New, monospace">Conv2D(f, 3, padding='same', use_bias=False, kernel_initializer='he_normal')</text>
+  <text x="1180" y="806" font-size="10" fill="#9C948A" font-weight="bold" letter-spacing="0.13em">LEGEND</text>
+  <rect x="1180" y="815" width="14" height="14" rx="2" fill="#2F5A6E"/>
+  <text x="1202" y="826" font-size="11.5" fill="#4A443C">Conv2D 3&#215;3 &#183; he_normal &#183; no bias</text>
+  <rect x="1180" y="839" width="14" height="14" rx="2" fill="#B9B1A4"/>
+  <text x="1202" y="850" font-size="11.5" fill="#4A443C">GroupNormalization, 32 groups</text>
+  <rect x="1180" y="863" width="14" height="14" rx="2" fill="#8C4A2F"/>
+  <text x="1202" y="874" font-size="11.5" fill="#4A443C">ReLU</text>
+  <line x1="1180" y1="894" x2="1194" y2="894" stroke="#9A7B1F" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <text x="1202" y="898" font-size="11.5" fill="#4A443C">skip connection &#8212; encoder features carried across</text>
+  <circle cx="1187" cy="918" r="6" fill="#1E1B17"/>
+  <text x="1202" y="922" font-size="11.5" fill="#4A443C">Concatenate &#8212; skip and upsampled, channel-wise</text>
+  <text x="1202" y="946" font-size="11.5" fill="#4A443C">/2 &#183; &#215;2 &#8212; spatial size halved, then doubled</text>
+  <text x="1180" y="972" font-size="9.5" fill="#9C948A">Block height suggests spatial resolution &#8212; channel counts are labelled, not drawn to scale.</text>
+</g>
+</svg>
