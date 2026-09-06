@@ -1,10 +1,6 @@
 # Deep Layers
 
-Deep-learning pipeline for **RGB → infrared (IR) image translation**, applied to the
-technical study of paintings. A network learns to predict the IR appearance of a
-painting from its ordinary colour photograph; wherever the *real* IR image departs
-from that prediction, the difference points to something the visible surface does
-not explain — an underdrawing, a *pentimento*, a reused support, a restoration.
+Deep-learning pipeline for detection of anomalies in real IR images. A network learns to predict the IR appearance of a painting starting from RGB visible image and wherever the real IR image departs from that prediction, the differences point to something the visible surface does not explain.
 
 The project implements and benchmarks two families of model:
 
@@ -15,7 +11,7 @@ The project implements and benchmarks two families of model:
 
 ---
 
-## Example
+## Result Example
 
 RGB » real IR » predicted IR » residual
 
@@ -34,18 +30,10 @@ RGB » real IR » predicted IR » residual
 
 ### Problem framing
 
-Infrared reflectography is a standard non-invasive tool in art conservation:
-carbon-based underdrawing materials (charcoal, black chalk) absorb IR
-differently from most paint layers, so they show through in an IR image that the
-visible surface hides.
+Infrared reflectography is a standard, non-invasive conservation tool used to reveal underdrawings, pentimenti, and other anomalies beneath the visible layer; however, reading and interpreting the differences between the visible and infrared images requires significant time and specialized expertise on the part of the operators.
 
-Rather than analysing IR images directly, this pipeline learns the mapping
-RGB → IR from paired data and studies the **residual** between the observed IR and
-the prediction. The signal of interest is, by construction, *the part of the IR
-that RGB cannot predict*: a good residual detector therefore depends on two things
-only — how cleanly the model reproduces the ordinary surface IR, and how well the
-"wrong because of a hidden mark" case can be told apart from "wrong because RGB→IR
-is genuinely ambiguous here, or because of craquelure, or model imprecision".
+Rather than analysing IR images directly, this pipeline learns the mapping RGB → IR from paired data and studies the **residual** between the observed IR and the prediction.  
+Different signals are implemented (see below).
 
 ### Model families and architectures
 
@@ -90,45 +78,29 @@ kernel.
 
 ### Signals and evaluation
 
-Starting from the raw residual `raw_delta = |real_IR − mu|`, two refinements are
-built (`scripts/delta_analysis.py`, `scripts/calibration.py`):
+Four signal maps are scored, two per model family. All start from the raw
+residual `raw_delta = |real_IR − mu|`.
 
-- **`structural_delta`** = `1 − local SSIM structure` — isolates the
-  structural-similarity term of SSIM, so substrate and acquisition grey-level
-  shifts that inflate `raw_delta` without indicating hidden content are ignored;
-- **`structural_z`** = `structural_delta / (smoothed σ)` — for the heteroscedastic
-  models only, where `σ = b·√2` is the Laplace standard deviation; normalises the
-  structural signal by how variable the model expects that region to be.
+Deterministic models (one IR value per pixel, no uncertainty):
 
-Three evaluation axes:
+- **`raw_delta`** = `|real_IR − mu|` — the plain residual between the real IR and the predicted IR;
+- **`structural_delta`** = `1 − local SSIM structure` — isolates the  structural-similarity term of SSIM, so substrate and acquisition grey-level  shifts that inflate `raw_delta` without indicating hidden content are ignored.
 
-- **Detection against hand-drawn masks** (`scripts/detection.py`) — AUROC and
-  average precision of any candidate signal against a mask in
-  `data/test/annotations/<stem>_Map.png`. AUC is the primary ranking (it is
-  prevalence-independent and, being rank-based, unaffected by display contrast).
-- **Stroke coherence** (`scripts/stroke_stats.py`) — reference-free
-  structure-tensor coherence. An underdrawing is oriented, elongated strokes;
-  prediction noise is isotropic. Needs no mask, so it corroborates the mask-based
-  ranking independently.
-- **Uncertainty calibration** (`scripts/calibration.py`) — for the
-  heteroscedastic models: coverage probability, ENCE reliability, error/σ
-  correlation, and dispersion (a large constant σ would score as "calibrated"
-  while being useless, so dispersion is reported alongside).
+Heteroscedastic (NLL) models (predict `mu` plus a Laplace log-scale `log_b`
+per pixel; `σ = b·√2` is the Laplace standard deviation):
 
-Because there are only three hand-drawn masks, a **grouped k-fold**
-cross-validation (`scripts/kfold.py`, k = 3) is run to attach an error bar to the
-point estimates.
+- **`|z|`** = `|real_IR − mu| / σ` — the raw residual divided by the model's own predicted uncertainty, so a large residual only counts where the model expected to be confident;
+- **`structural_z`** = `structural_delta / (smoothed σ)` — the structural signal normalised by how variable the model expects that region to be.
 
-### What was found
+Evaluation axes:
 
-The architecture axis is **saturated**: across the whole model set, test PSNR
-lands at 16–19 dB and detection AUROC at 0.65–0.72, with only small differences.
-The best detection signal is `structural_delta` (deterministic) / `structural_z`
-(heteroscedastic), at **AUC ≈ 0.70 per fold, ≈ 0.72 for a 3-fold ensemble**,
-carried by `attention_unet_nll` and `resunet_nll`. The heteroscedastic head is
-kept for its theoretical justification but its measured contribution to detection
-is marginal and its learned σ is optimistic. The bottleneck is the data and the
-problem formulation — annotation budget and single-band IR — not model capacity.
+- **Detection against hand-drawn masks** (`scripts/detection.py`) — scores any candidate signal against a mask in `data/test/annotations/<id>_Map.png`:
+  - **AUROC** — rank-based, prevalence-independent and unaffected by display contrast; the primary ranking.
+  - **average precision (AP)** — area under the precision–recall curve; prevalence-dependent, so its no-skill baseline is `prevalence`, not `0.5`.
+  - **prevalence** — fraction of mask pixels that are positive; reported alongside AP.
+  - **lift** = `AP / prevalence` — AP normalised against chance, so signals scored on masks with different prevalence stay comparable (lift 1 = no skill).
+- **Stroke coherence** (`scripts/stroke_stats.py`) — reference-free  structure-tensor coherence. An underdrawing is oriented, elongated strokes;
+  prediction noise is isotropic. Needs no mask, so it corroborates the mask-based ranking independently.
 
 ---
 
@@ -145,29 +117,7 @@ deep_layers/
 │   ├── deterministic/<arch>/best_model.keras
 │   └── nll/<arch>_nll/best_model.keras
 ├── notebooks/                         # see "Reproducing the pipeline" below
-├── scripts/
-│   ├── config.py                      # single pydantic Settings object (paths, hyperparameters)
-│   ├── reproducibility.py             # global RNG seeding
-│   ├── dataset.py                     # pair discovery, artwork-and-mockups split, tf.data pipeline, padding
-│   ├── augmentation.py                # stateless paired RGB/IR augmentation
-│   ├── kfold.py                       # grouped k-fold split
-│   ├── norm_utils.py                  # shared GroupNorm group-count helper + the _ReLUFix layer
-│   ├── unet.py resunet.py attention_unet.py unet_residual.py
-│   ├── unet_v2.py unet_restormer.py unet_dilated.py unet_v2_dilated.py
-│   ├── efficientnet_unet.py           # + _ResizeToMatch layer
-│   ├── aspp.py                        # dilated bottleneck block
-│   ├── residual_head.py               # RGBToGray + straight-through clip, for unet_residual
-│   ├── *_nll.py + nll_layers.py       # heteroscedastic counterparts + ClipLogVar layer
-│   ├── losses.py                      # combined_loss, laplace_nll_loss (+ unused advanced/gaussian variants)
-│   ├── metrics.py                     # PSNR/SSIM Keras metrics (deterministic + mu-only NLL variants)
-│   ├── trainer.py trainer_nll.py      # model factory, compile, callbacks, checkpoint loading
-│   ├── train_single.py               # train exactly one architecture in its own process
-│   ├── delta_analysis.py             # local SSIM decomposition, raw/structural delta, confidence map
-│   ├── calibration.py                # sigma calibration metrics, learned/structural z-score
-│   ├── contrast.py                   # display-contrast control for z-score maps
-│   ├── detection.py                  # AUROC / average precision against a mask
-│   ├── stroke_stats.py               # reference-free structure-tensor coherence
-│   └── visualization.py visualization_nll.py
+├── scripts/                          # library functions
 ├── env/environment.yml               # conda environment (option A)
 ├── requirements.txt                  # pip dependencies (option B)
 ├── README.md
@@ -178,10 +128,8 @@ deep_layers/
 
 ## Setup
 
-**Requirements**: Python 3.11.5. Either conda (option A, recommended) or pip
-(option B) — both install the same pinned versions. A CUDA or Apple-Metal GPU is
-strongly recommended (100-epoch runs × a large model set); the pipeline also runs
-on CPU.
+**Requirements**: Python 3.11.5. Either conda (option A) or pip (option B) both install the same pinned versions. A CUDA or Apple-Metal GPU is
+strongly recommended (100-epoch runs × a large model set); the pipeline also runs on CPU.
 
 ### Option A — conda
 
@@ -263,7 +211,7 @@ results of the one before it.
 | `04x` | signal detection (AUROC, stroke coherence, σ calibration) against the hand-drawn masks |
 | `05x` | signal maps across every `data/test/` image, for perceptual inspection and reference-free ranking |
 | `06x` | grouped k-fold cross-validation — training and evaluation |
-| `C*`, `P0` | self-contained studies: baseline-vs-current comparison, β-sweep analysis, training-free uncertainty and signal-sharpening experiments, the GroupNorm pilot |
+| `Cx`, `Px` | self-contained studies, pilots and and experiments |
 
 ```bash
 jupyter notebook notebooks/
