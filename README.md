@@ -28,10 +28,10 @@ RGB » real IR » predicted IR » residual
 
 <table width="100%">
   <tr>
-    <td align="center" width="25%"><img src="assets/examples/00_rgb.jpg" width="100%"/></td>
-    <td align="center" width="25%"><img src="assets/examples/00_ir.jpg" width="100%"/></td>
-    <td align="center" width="25%"><img src="assets/examples/00_efficientnet_unet_predicted_ir.jpg" width="100%"/></td>
-    <td align="center" width="25%"><img src="assets/examples/00_efficientnet_unet_delta.jpg" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/GT01_RGB.png" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/GT01_Real_IR.png" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/GT01_resunet_nll_predicted.png" width="100%"/></td>
+    <td align="center" width="25%"><img src="assets/examples/GT01_resunet_nll_structZ.png" width="100%"/></td>
   </tr>
 </table>
 
