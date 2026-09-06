@@ -1,6 +1,9 @@
 # Dataset (stored locally, not versioned)
 data/
 
+#Support images (stored locally, not versioned)
+assets/img/*
+
 # Training outputs
 logs/
 models/**/*.keras
