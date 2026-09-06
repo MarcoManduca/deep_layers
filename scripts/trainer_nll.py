@@ -1,14 +1,11 @@
 """Training utilities for heteroscedastic (mu, log-variance) NLL models.
 
-Kept separate from ``scripts/trainer.py`` by design: the existing
-deterministic architectures (``unet``, ``resunet``, ``attention_unet``,
-``efficientnet_unet``) and their checkpoints/behaviour are left untouched.
 This module wires up the NLL-variant builders instead, reusing
 ``scripts.trainer.get_callbacks`` (generic checkpoint/early-stopping/
-TensorBoard setup, not specific to any architecture or loss). Since
-``fixing.md`` #10, every NLL architecture — ``unet_nll``/``resunet_nll``/
-``attention_unet_nll`` (Round 1) and, since Round 2, ``efficientnet_unet_nll``
-too — trains with a single Laplace-beta NLL loss
+TensorBoard setup, not specific to any architecture or loss).
+Every NLL architecture — ``unet_nll``/``resunet_nll``/
+``attention_unet_nll``/``efficientnet_unet_nll``
+— trains with a single Laplace-beta NLL loss
 (:func:`scripts.losses.laplace_nll_loss`, the ``"laplace_nll"`` default
 below), collapsing the previous per-architecture ``gaussian_nll``/
 ``beta_nll`` checkpoint split into one NLL checkpoint per architecture.

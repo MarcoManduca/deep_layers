@@ -8,7 +8,7 @@ instead of training multiple models in a loop within a single notebook kernel.
 Why a subprocess: training several Keras models back-to-back in one Python
 process on this project's hardware (Apple Silicon, ``tensorflow-metal``)
 leaves GPU-side state behind that ``tf.keras.backend.clear_session()`` does
-not fully release — confirmed directly (``fixing.md`` §7): the *first*
+not fully release — confirmed directly: the *first*
 architecture trained in a process always trains cleanly, every subsequent
 one increasingly risks going ``NaN`` from epoch 1, regardless of which
 architecture goes first. Every architecture trained alone in a fresh process
@@ -20,7 +20,7 @@ Writes the checkpoint to ``<model_dir>/<arch>/best_model.keras`` (via
 ``History.history`` dict to ``<model_dir>/<arch>/history.json``, since a
 dict can cross the process boundary only via a file, not in memory.
 
-Also supports ``fixing.md`` #6's two-phase EfficientNet fine-tuning: pass
+Also supports two-phase EfficientNet fine-tuning: pass
 ``--init-from <phase-1-checkpoint>`` to warm-start this process's model from
 an existing checkpoint's weights before compiling (e.g. phase 1 trains
 ``efficientnet_unet`` with the encoder frozen; phase 2 trains
@@ -68,8 +68,8 @@ def _build_datasets(
 
     With ``fold is None`` and ``generic_split is False`` (default): the
     artwork-and-mockups split shared by ``020``/``021``/``023``. With ``fold``
-    set: the grouped k-fold split (``scripts.kfold``, ``fixing.md`` #4's Round
-    4) — fold ``fold`` of ``kfold_k``, held-out real artworks as val, the rest
+    set: the grouped k-fold split (``scripts.kfold``, ``fixing.md``
+     — fold ``fold`` of ``kfold_k``, held-out real artworks as val, the rest
     plus all mockups as train. With ``generic_split`` set: the mockup-free
     ablation split (``scripts.dataset.mockup_free_train_val_split``,
     ``020_bis_training_generic.ipynb`` / ``C6``) — every mockup pair dropped,
@@ -182,7 +182,7 @@ def main() -> None:
         type=Path,
         default=None,
         help="Path to a .keras checkpoint to warm-start this model's weights "
-        "from, before compiling (fixing.md #6's two-phase EfficientNet "
+        "from, before compiling (two-phase EfficientNet "
         "fine-tuning: phase 2 builds with --kwargs "
         "'{\"freeze_encoder\": false}' and initializes from phase 1's "
         "checkpoint here). The architecture must be unchanged from the "
@@ -196,7 +196,7 @@ def main() -> None:
         "--fold",
         type=int,
         default=None,
-        help="Grouped k-fold index (fixing.md #4's Round 4). When set, the "
+        help="Grouped k-fold index. When set, the "
         "train/val split is scripts.kfold.fold_split(k=--kfold-k, fold=--fold) "
         "instead of the standard mockup-aware split: held-out real artworks are "
         "val, the rest plus all mockups are train, no test split. Point "

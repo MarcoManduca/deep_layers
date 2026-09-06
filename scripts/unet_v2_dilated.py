@@ -1,7 +1,7 @@
-"""UNet v2 with a dilated (multi-scale) bottleneck — Round 3 exploratory variant.
+"""UNet v2 with a dilated (multi-scale) bottleneck
 
 Identical to :func:`scripts.unet_v2.build_unet_v2` except the bottleneck
-block: see ``scripts.aspp`` for why (``fixing.md`` #7). Saved as a distinct
+block: see ``scripts.aspp``. Saved as a distinct
 ``unet_v2_dilated`` checkpoint rather than overwriting ``unet_v2``. The
 ``use_strided_conv``/``use_upsample_conv``/``dropout_rate`` toggles are
 carried over unchanged (same meaning as in ``unet_v2.py``) so this variant

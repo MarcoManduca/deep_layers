@@ -8,9 +8,8 @@ a second channel (named/clipped as ``log_var`` for historical reasons —
 see ``scripts.config.Settings.NLL_LOG_VAR_MIN``) that is the model's own
 learned estimate of how ambiguous the local RGB context has historically
 been. Trained with :func:`scripts.losses.laplace_nll_loss` via
-``scripts/trainer_nll.py`` (``fixing.md`` #10 — this channel is a Laplace
+``scripts/trainer_nll.py`` (this channel is a Laplace
 log-scale, not a Gaussian log-variance, despite the name).
-See ``code-review.md`` §7.6 for the design rationale and references.
 """
 
 import tensorflow as tf
@@ -29,7 +28,7 @@ def _residual_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     (kept unconditional — see ``scripts.resunet._residual_block`` for why
     a conditional identity path would be dead code in this architecture).
     Uses ``GroupNormalization`` instead of ``BatchNormalization``
-    (``fixing.md`` #1) and He init instead of Xavier (``fixing.md`` #3).
+    and He init instead of Xavier.
 
     Parameters
     ----------

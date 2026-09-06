@@ -1,9 +1,7 @@
-"""UNet with a dilated (multi-scale) bottleneck — Round 3 exploratory variant.
+"""UNet with a dilated (multi-scale) bottleneck
 
 Identical to :func:`scripts.unet.build_unet` except the bottleneck block:
-see ``scripts.aspp`` for why (``fixing.md`` #7). Saved as a distinct
-``unet_dilated`` checkpoint rather than overwriting ``unet``, so the two
-can be compared directly under the same Round 1 recipe otherwise.
+see ``scripts.aspp``.
 """
 
 import tensorflow as tf

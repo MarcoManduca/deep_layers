@@ -11,7 +11,7 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """Two consecutive Conv → GroupNorm → ReLU operations.
 
     Uses ``GroupNormalization`` instead of ``BatchNormalization``
-    (``fixing.md`` #1) and He init instead of Xavier (``fixing.md`` #3).
+    and He init instead of Xavier.
 
     Parameters
     ----------
@@ -43,7 +43,7 @@ def _attention_gate(
     g: tf.Tensor,
     filters: int,
 ) -> tf.Tensor:
-    """Additive soft-attention gate (Oktay et al., 2018).
+    """Additive soft-attention gate
 
     Computes a spatial attention map from the skip connection ``x``
     and the gating signal ``g`` (decoder feature map), then scales

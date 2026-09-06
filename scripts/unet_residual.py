@@ -12,8 +12,7 @@ decoder, normalization and initialization, and it reuses that module's
   network only has to learn where and how much IR departs from the
   visible-grey level.
 
-The motivation is standard global residual learning (VDSR, Kim et al.
-2016; DnCNN, Zhang et al. 2017): when input and target are largely
+The motivation is standard global residual learning: when input and target are largely
 correlated, learning the difference is an easier optimization problem
 than learning the target, and the high-frequency detail of the input is
 preserved by construction rather than having to be reconstructed through
@@ -27,10 +26,6 @@ transparent), so on this dataset the required residual may be large and
 structured, which would erase the "the identity is free" advantage. That
 is an empirical question about these paintings, and the point of training
 the variant.
-
-Saved under its own ``arch_name`` (``models/deterministic/unet_residual/``)
-so the ``unet`` baseline is never overwritten and the two differ *only* in
-the head — the same discipline the Round 3 dilated variants follow.
 """
 
 import tensorflow as tf

@@ -13,13 +13,6 @@ The project implements and benchmarks two families of model:
   because a single visible colour can legitimately correspond to more than one IR
   reflectance and a point estimate cannot represent that ambiguity.
 
-The theoretical motivation for every design decision, with references to the
-literature, is in [theory-links.md](theory-links.md). The final quantitative
-comparison of all models and the reasoning behind the recommended ones is in
-[final-comments.md](final-comments.md). The structure of the code and the
-engineering choices (including the Apple-Silicon GPU work-arounds) are in
-[code-review.md](code-review.md).
-
 ---
 
 ## Example
@@ -93,7 +86,7 @@ The same recipe is applied uniformly across the whole model set:
 | Augmentation | shared flips on RGB+IR; brightness/contrast jitter on RGB only; optional shared random crop | IR reflectance is a physical property, so photometric jitter must not touch it; only the training split is augmented |
 
 Architectures are trained **one per subprocess** rather than in a loop inside one
-kernel — see [code-review.md](code-review.md) for the Apple-Silicon GPU reason.
+kernel.
 
 ### Signals and evaluation
 
@@ -111,7 +104,7 @@ Three evaluation axes:
 
 - **Detection against hand-drawn masks** (`scripts/detection.py`) — AUROC and
   average precision of any candidate signal against a mask in
-  `data/test/annotations/<stem>_Map.png`. AUROC is the primary ranking (it is
+  `data/test/annotations/<stem>_Map.png`. AUC is the primary ranking (it is
   prevalence-independent and, being rank-based, unaffected by display contrast).
 - **Stroke coherence** (`scripts/stroke_stats.py`) — reference-free
   structure-tensor coherence. An underdrawing is oriented, elongated strokes;
@@ -131,12 +124,11 @@ point estimates.
 The architecture axis is **saturated**: across the whole model set, test PSNR
 lands at 16–19 dB and detection AUROC at 0.65–0.72, with only small differences.
 The best detection signal is `structural_delta` (deterministic) / `structural_z`
-(heteroscedastic), at **AUROC ≈ 0.70 per fold, ≈ 0.72 for a 3-fold ensemble**,
+(heteroscedastic), at **AUC ≈ 0.70 per fold, ≈ 0.72 for a 3-fold ensemble**,
 carried by `attention_unet_nll` and `resunet_nll`. The heteroscedastic head is
 kept for its theoretical justification but its measured contribution to detection
 is marginal and its learned σ is optimistic. The bottleneck is the data and the
 problem formulation — annotation budget and single-band IR — not model capacity.
-The full analysis is in [final-comments.md](final-comments.md).
 
 ---
 
@@ -152,7 +144,6 @@ deep_layers/
 ├── models/                            # checkpoints, not versioned
 │   ├── deterministic/<arch>/best_model.keras
 │   └── nll/<arch>_nll/best_model.keras
-├── logs/                              # TensorBoard event files, not versioned
 ├── notebooks/                         # see "Reproducing the pipeline" below
 ├── scripts/
 │   ├── config.py                      # single pydantic Settings object (paths, hyperparameters)
@@ -177,18 +168,11 @@ deep_layers/
 │   ├── detection.py                  # AUROC / average precision against a mask
 │   ├── stroke_stats.py               # reference-free structure-tensor coherence
 │   └── visualization.py visualization_nll.py
-├── tests/unit/                        # one module per script, pure-logic focused
-├── biblio/                            # papers cited for the core loss/normalisation choices
 ├── env/environment.yml               # conda environment (option A)
 ├── requirements.txt                  # pip dependencies (option B)
-├── pyproject.toml                    # ruff + pytest configuration
-├── README.md code-review.md final-comments.md theory-links.md
+├── README.md
 └── LICENSE                            # CC BY-SA 4.0
 ```
-
-`get_callbacks` / `load_model` / `load_model_nll` all take `model_dir` as an
-argument, so the `models/` layout is a convention the notebooks enforce, not
-something baked into the trainer.
 
 ---
 
@@ -218,13 +202,13 @@ pip install -r requirements.txt
 
 ```bash
 python -c "import tensorflow as tf, keras; print(tf.__version__, keras.__version__, tf.config.list_physical_devices('GPU'))"
-pytest -q                                  # no data or checkpoints required
+pytest -q 
 ```
 
 Expected: `2.16.2 3.15.1 [...GPU...]` and a green test run. On Apple Silicon
 `tensorflow-metal` enables the Metal GPU automatically.
 
-**`keras` is pinned on purpose.** TensorFlow 2.16 only requires `keras>=3`, so an
+**`keras`** TensorFlow 2.16 only requires `keras>=3`, so an
 unpinned install picks the newest release; the checkpoints under `models/` are
 saved by Keras 3.15 and fail to load under a different minor version with a
 confusing initializer error. Keep `keras==3.15.1` consistent across
@@ -236,7 +220,7 @@ moving to a newer Keras.
 ```bash
 ruff check scripts/ tests/
 ruff format scripts/ tests/
-pytest                                     # add --cov=scripts --cov-report=term-missing for coverage
+pytest
 ```
 
 Unit tests cover the pure pipeline logic — split-leakage prevention, padding,

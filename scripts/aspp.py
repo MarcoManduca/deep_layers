@@ -1,22 +1,19 @@
-"""Dilated (ASPP-style) bottleneck block shared by the Round 3 variants.
+"""Dilated (ASPP-style) bottleneck block.
 
-``fixing.md`` #7 ("dilated convolution never tried") flags a gap: this
-project's encoders only widen their receptive field by downsampling
+This project's encoders only widen their receptive field by downsampling
 (``MaxPool2D`` / strided conv), which is also the mechanism that destroys
 the exact spatial position of the thin underdrawing strokes the whole
-pipeline exists to detect (``theory-links.md`` §3.4's "position loss").
-Dilated convolution grows the receptive field *without* downsampling —
-L05 slide 19's stated purpose.
+pipeline exists to detect. Dilated convolution grows the receptive
+field *without* downsampling.
 
 This module applies that idea at the bottleneck only, leaving the encoder/
 decoder downsampling path of ``unet``/``unet_v2`` completely unchanged
-(``fixing.md``'s Round 3 is explicitly "new variants ... not a fix to an
-existing model" — the comparison that matters is dilated-bottleneck vs.
-plain-bottleneck at otherwise identical depth, not a redesign of how much
-the encoder downsamples). Several parallel branches at increasing dilation
-rates (the ``atrous spatial pyramid pooling`` pattern from DeepLab) are
-concatenated and projected back to ``filters`` channels, so the block sees
-multiple receptive-field scales at once instead of committing to one.
+(the comparison that matters is dilated-bottleneck vs. plain-bottleneck
+at otherwise identical depth, not a redesign of how much the encoder downsamples).
+Several parallel branches at increasing dilation rates (the ``atrous spatial
+pyramid pooling`` pattern) are concatenated and projected back to ``filters``
+channels, so the block sees multiple receptive-field scales at once instead of
+committing to one.
 """
 
 import tensorflow as tf

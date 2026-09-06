@@ -6,11 +6,9 @@ predicted ``sigma`` — and therefore the learned z-score
 ``(real_IR - mu) / sigma`` the reflectography signal is built on — is any good.
 This module scores ``sigma`` on its own, post hoc, from arrays already produced
 by ``model.predict``: no retraining, no change to any model, so existing
-checkpoints can be compared immediately. See ``note.md`` ("evaluating the
-learned z-score itself") and ``code-review.md`` §7.6.
+checkpoints can be compared immediately.
 
-Two properties must be read together (Gneiting et al. 2007): a model is only
-useful if it is *calibrated* **and** *sharp*.
+A model is only useful if it is *calibrated* **and** *sharp*:
 
 - **Calibration** — do the predicted intervals hold? Measured by
   :func:`coverage_probability` (empirical vs. nominal Gaussian coverage),
@@ -23,8 +21,8 @@ useful if it is *calibrated* **and** *sharp*.
   to provide. ``dispersion == 0`` means exactly that failure.
 
 :func:`mean_gaussian_nll` (and its Laplace counterpart,
-:func:`mean_laplace_nll`, for every NLL architecture since ``fixing.md``
-#10 unified them all on Laplace) is the one number that folds accuracy and
+:func:`mean_laplace_nll`, for every NLL architecture)
+is the one number that folds accuracy and
 calibration together (a proper scoring rule), and is the natural
 tie-breaker when ``mae``/``ssim``/``psnr`` and the calibration metrics
 disagree. Every other function here (``coverage_probability``,
@@ -33,17 +31,6 @@ takes ``sigma`` (true standard deviation) as a plain input and is
 distribution-agnostic — only the NLL term differs structurally between
 Gaussian and Laplace, so :func:`evaluate_calibration`'s ``distribution``
 parameter dispatches only that one term.
-
-References
-----------
-T. Gneiting, F. Balabdaoui, A.E. Raftery, "Probabilistic forecasts,
-calibration and sharpness," *JRSS-B*, 2007.
-https://doi.org/10.1111/j.1467-9868.2007.00587.x
-
-D. Levi, L. Gispan, N. Giladi, E. Fetaya, "Evaluating and Calibrating
-Uncertainty Prediction in Regression Tasks," *Sensors*, 2022.
-https://doi.org/10.48550/arXiv.1905.11659 — source of the ENCE
-(Expected Normalized Calibration Error) used by :func:`sigma_reliability`.
 """
 
 import math
@@ -418,7 +405,7 @@ def mean_laplace_nll(real_ir: np.ndarray, mu: np.ndarray, b: np.ndarray) -> floa
 
     ``log(2 * b) + |real - mu| / b``: the Laplace counterpart of
     :func:`mean_gaussian_nll`, for models trained with
-    ``scripts.losses.laplace_nll_loss`` (``fixing.md`` #10). A proper
+    ``scripts.losses.laplace_nll_loss``. A proper
     scoring rule, minimised only by the true ``(mu, b)``. Unlike
     ``scripts.losses.laplace_nll_loss`` — which drops the additive
     ``log(2)`` constant, irrelevant to gradients — this keeps it, so the
@@ -549,11 +536,10 @@ def evaluate_calibration(
     Every metric here except ``nll`` treats ``sigma`` as a plain standard
     deviation and is distribution-agnostic; only the NLL term's formula
     differs structurally between Gaussian and Laplace, so ``distribution``
-    dispatches only that one term. Since ``fixing.md`` #10 (Round 2), every
-    live NLL checkpoint (`unet_nll`/`resunet_nll`/`attention_unet_nll`/
-    `efficientnet_unet_nll`) is trained as Laplace, so ``distribution=
-    "laplace"`` with :func:`laplace_sigma_from_scale` (``b * sqrt(2)``,
-    **not** ``exp(0.5 * log_b)``) is the correct choice for all of them.
+    dispatches only that one term. Every live NLL checkpoint
+    (`unet_nll`/`resunet_nll`/`attention_unet_nll`/ `efficientnet_unet_nll`)
+    is trained as Laplace, so ``distribution= "laplace"`` with :func:`laplace_sigma_from_scale`
+    (``b * sqrt(2)``, **not** ``exp(0.5 * log_b)``) is the correct choice for all of them.
     ``distribution="gaussian"`` (the default, kept for backward
     compatibility and exercised directly by ``tests/unit/test_calibration.py``)
     remains available only for scoring an older checkpoint trained before

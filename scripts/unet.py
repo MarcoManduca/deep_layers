@@ -14,10 +14,10 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     ``settings.BATCH_SIZE == 8`` (well below the 50-256 range typical
     per-batch statistics are usually computed over), GroupNorm's
     per-example, per-channel-group statistics avoid the batch-size
-    sensitivity BatchNorm has at this scale (see ``fixing.md`` #1).
+    sensitivity BatchNorm has at this scale.
     ``kernel_initializer="he_normal"`` replaces the Keras-default Xavier
     init, which assumes a ``tanh``-like activation rather than the ReLU
-    used here (``fixing.md`` #3).
+    used here.
 
     Parameters
     ----------

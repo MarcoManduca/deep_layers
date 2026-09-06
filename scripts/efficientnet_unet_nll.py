@@ -11,7 +11,6 @@ a mean ``mu`` (same role as the existing model's output) and a
 log-variance ``log_var`` (the model's own learned estimate of how
 ambiguous the local RGB context has historically been). Trained with
 :func:`scripts.losses.gaussian_nll_loss` via ``scripts/trainer_nll.py``.
-See ``code-review.md`` §7.6 for the design rationale and references.
 """
 
 import tensorflow as tf
