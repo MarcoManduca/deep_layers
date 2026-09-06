@@ -3,8 +3,7 @@ effects (luminance, contrast) versus genuine structural discontinuities.
 
 Takes the real and predicted IR images and produces complementary maps that
 help separate a gray-level shift (substrate, illumination, exposure) from an
-actual hidden mark (underdrawing, pentimento, reused support). See
-``note.md`` for the design rationale.
+actual hidden mark (underdrawing, pentimento, reused support).
 """
 
 from dataclasses import dataclass

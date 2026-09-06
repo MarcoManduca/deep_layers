@@ -1,6 +1,6 @@
-"""Grouped k-fold splits for Round 4 cross-validation (``fixing.md`` #4).
+"""Grouped k-fold splits for Round 4 cross-validation.
 
-Round 4's purpose is a genuine held-out variance estimate — how much the
+Genuine held-out variance estimation — how much the
 metrics move across independent train/val splits — instead of the single
 fixed split every other notebook uses.
 

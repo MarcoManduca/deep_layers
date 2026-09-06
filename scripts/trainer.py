@@ -91,18 +91,9 @@ def compile_model(
     """Compile a model with Adam and the unified ``combined_loss``.
 
     Every deterministic architecture — including ``efficientnet_unet``/
-    ``efficientnet_unet_ft`` since Round 2 (``fixing.md`` #9) — now trains
+    ``efficientnet_unet_ft`` — now trains
     with the same :func:`scripts.losses.combined_loss`
-    (``0.16 * Charbonnier + 0.84 * (1 - MS-SSIM)``). Before Round 2,
-    ``efficientnet_unet`` used a separate ``combined_loss_advanced`` (MAE +
-    Laplacian pyramid + FFT, no perceptual term); that function is still
-    defined and unit-tested in ``scripts/losses.py`` but is no longer
-    selected by any architecture here — dropping its Laplacian-pyramid/FFT
-    terms in favor of a shared perceptual (MS-SSIM) loss is a deliberate
-    trade-off documented in ``fixing.md`` §2/§4, not an oversight.
-    ``arch_name`` is kept as a parameter (rather than dropped) so callers
-    don't need to change, and so a future architecture-specific loss could
-    still be reintroduced here without touching every call site.
+    (``0.16 * Charbonnier + 0.84 * (1 - MS-SSIM)``).
 
     Parameters
     ----------
@@ -116,12 +107,11 @@ def compile_model(
     loss_alpha : float
         Charbonnier weight in :func:`scripts.losses.combined_loss`.
     weight_decay : float
-        L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
+        L2 weight decay passed to ``Adam``.
     clipvalue : float
         Per-element gradient clip passed to ``Adam(clipvalue=...)`` —
         guards against ``ms_ssim_loss``'s gradient singularity at a
-        collapsed-to-zero scale term (see ``settings.GRADIENT_CLIP_VALUE``,
-        ``fixing.md`` §7).
+        collapsed-to-zero scale term (see ``settings.GRADIENT_CLIP_VALUE``.
 
     Returns
     -------
@@ -162,10 +152,9 @@ def get_callbacks(
 
     Creates ``model_dir / arch_name /`` if it does not exist. All three of
     ``ModelCheckpoint``/``EarlyStopping``/``ReduceLROnPlateau`` monitor
-    ``val_loss`` uniformly (``fixing.md``'s callback-tuning note): the
-    checkpoint saved is always the one the stop/LR decisions were actually
-    based on, rather than splitting onto different metrics that can
-    diverge epoch to epoch.
+    ``val_loss`` uniformly: the checkpoint saved is always the one the
+    stop/LR decisions were actually based on, rather than splitting onto
+    different metrics that can diverge epoch to epoch.
 
     Parameters
     ----------
@@ -251,8 +240,7 @@ def load_model(
     ----------
     arch_name : str
         Architecture identifier — any ``_BUILDERS`` key, including
-        ``"efficientnet_unet_ft"`` (Round 2 two-phase fine-tuning
-        checkpoint, ``fixing.md`` #6).
+        ``"efficientnet_unet_ft"``.
     model_dir : Path
         Root directory where checkpoints are stored.
     lr : float

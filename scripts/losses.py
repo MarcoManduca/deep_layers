@@ -61,11 +61,10 @@ def charbonnier_loss(epsilon: float = 1e-3) -> Callable:
 def ms_ssim_loss() -> Callable:
     """Return a ``1 - MS-SSIM`` loss function.
 
-    Multi-scale SSIM (Wang et al., 2003) resolves the single-scale
+    Multi-scale SSIM resolves the single-scale
     trade-off ``tf.image.ssim`` has: a small filter preserves edges but
-    reintroduces flat-region artifacts, a large one does the opposite
-    (Zhao et al. 2016, §V-B). MS-SSIM pools several scales instead of
-    forcing one choice.
+    reintroduces flat-region artifacts, a large one does the opposite.
+    MS-SSIM pools several scales instead of forcing one choice.
 
     Returns
     -------
@@ -89,13 +88,9 @@ def combined_loss(alpha: float = 0.16, epsilon: float = 1e-3) -> Callable:
         loss = alpha * Charbonnier(y_true, y_pred)
              + (1 - alpha) * (1 - MS-SSIM(y_true, y_pred))
 
-    Matches the best-performing loss (``Mix``) in Zhao, Gallo, Frosio &
-    Kautz, *"Loss Functions for Image Restoration with Neural Networks"*
-    (2016, `biblio/1511.08861v3.pdf`): ``alpha=0.16`` weights the
+    Matches the best-performing loss (``Mix``): ``alpha=0.16`` weights the
     perceptual MS-SSIM term (84%) over the pixel-fidelity Charbonnier term
-    (16%) — the paper's own best-performing ratio, empirically the
-    opposite of this loss's pre-Round-1 weighting (``alpha=0.7`` favouring
-    plain MAE). See ``fixing.md`` #9.
+    (16%).
 
     Parameters
     ----------
@@ -219,14 +214,14 @@ def combined_loss_advanced(
     provides richer features; the additional frequency-domain terms
     recover the high-frequency detail that MAE tends to suppress.
 
-    **No longer used by ``scripts/trainer.py``** as of ``fixing.md`` #9
-    (Round 2): ``efficientnet_unet``/``efficientnet_unet_ft`` now train with
+    **No longer used by ``scripts/trainer.py``** :
+    ``efficientnet_unet``/``efficientnet_unet_ft`` now train with
     the same unified :func:`combined_loss` as every other deterministic
     architecture, which gives this architecture a perceptual (MS-SSIM) term
     for the first time — at the deliberate cost of dropping this function's
     Laplacian-pyramid/FFT terms, a real trade-off worth confirming
-    empirically rather than assuming as a pure improvement (see ``fixing.md``
-    §4). Left defined and unit-tested here (not deleted) since it remains a
+    empirically rather than assuming as a pure improvement.
+    Left defined and unit-tested here (not deleted) since it remains a
     valid, independently useful loss function — just no longer wired into
     any architecture's default training path.
 
@@ -311,7 +306,7 @@ def gaussian_nll_loss(min_log_var: float = -6.0, max_log_var: float = 6.0) -> Ca
 def beta_gaussian_nll_loss(
     beta: float = 0.5, min_log_var: float = -6.0, max_log_var: float = 6.0
 ) -> Callable:
-    """Return a beta-weighted Gaussian NLL loss (Seitzer et al. 2022).
+    """Return a beta-weighted Gaussian NLL loss.
 
     Same heteroscedastic setup as :func:`gaussian_nll_loss` (``y_pred``
     carries ``mu`` in channel 0, ``log_var`` in channel 1), but each
@@ -328,10 +323,7 @@ def beta_gaussian_nll_loss(
     excluded from the gradient) counteracts this without changing what
     the loss is minimizing at convergence. ``beta = 0`` recovers the
     plain Gaussian NLL exactly; ``beta = 1`` recovers plain MSE weighting
-    (uncertainty ignored in the gradient magnitude). See
-    ``code-review.md`` §7.6 and Seitzer et al., *"On the Pitfalls of
-    Heteroscedastic Uncertainty Estimation with Probabilistic Neural
-    Networks,"* ICLR 2022 (https://doi.org/10.48550/arXiv.2203.09168).
+    (uncertainty ignored in the gradient magnitude).
 
     Parameters
     ----------
@@ -377,15 +369,12 @@ def laplace_nll_loss(
 
         loss = stop_gradient(b)^beta * (|y_true - mu| / b + log(b))
 
-    Motivation (``fixing.md`` #10): Zhao et al. (2016) show L1-family
-    fidelity losses beat L2-family ones for image restoration (see
-    :func:`combined_loss`); the same reasoning applies to the likelihood
+    Motivation L1-family fidelity losses beat L2-family ones for image restoration
+    (see: func:`combined_loss`); the same reasoning applies to the likelihood
     term of a heteroscedastic model — Laplace NLL is L1-weighted-by-scale,
     Gaussian NLL is L2-weighted-by-variance. The ``stop_gradient(b)^beta``
-    weighting generalises the beta-reweighting trick from Seitzer et al.
-    (2022) — defined for the Gaussian variance — to the Laplace scale;
-    this is a motivated adaptation, not the literally published formula.
-    ``beta = 0`` recovers the plain Laplace NLL exactly.
+    weighting generalises the beta-reweighting defined for the Gaussian
+    variance — to the Laplace scale. ``beta = 0`` recovers the plain Laplace NLL exactly.
 
     This loss replaces both :func:`gaussian_nll_loss` and
     :func:`beta_gaussian_nll_loss` for every NLL architecture — `unet_nll`,

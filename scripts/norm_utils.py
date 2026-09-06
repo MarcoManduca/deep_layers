@@ -27,12 +27,8 @@ def relu(x: tf.Tensor) -> tf.Tensor:
     works around an open tensorflow-metal bug where the GPU-compiled
     (graph-mode) ``ReLU`` kernel fails to clip negative values on Apple
     Silicon, letting negative activations leak through and accumulate over
-    depth until the model's weights go ``NaN`` (confirmed on this project's
-    hardware — Apple M4 Max, ``tensorflow-macos==2.16.2``,
-    ``tensorflow-metal==1.2.0`` — reproduced both in isolation and as the
-    root cause of the Round 1 ``resunet``/``attention_unet``/``unet`` NaN
-    training failures). Bug report (open, unresolved as of writing):
-    https://developer.apple.com/forums/thread/818015
+    depth until the model's weights go ``NaN``.
+    Bug report (open, unresolved as of writing): https://developer.apple.com/forums/thread/818015
 
     Parameters
     ----------
@@ -53,8 +49,7 @@ def num_groups(filters: int, max_groups: int = 32) -> int:
     ``GroupNormalization`` requires ``groups`` to divide the channel count
     evenly; a fixed ``32`` (the paper's default) fails on the small filter
     counts unit tests use, so the group count adapts down. ``32`` is used
-    unmodified for every real channel size in this project (64-1024,
-    see ``fixing.md`` §3).
+    unmodified for every real channel size in this project (64-1024).
 
     Parameters
     ----------

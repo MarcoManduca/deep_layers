@@ -1,6 +1,6 @@
 """UNet with a Restormer-style transposed-attention block at the bottleneck.
 
-Implements `code-review.md` §7.3: rather than replacing a whole
+Implements: rather than replacing a whole
 architecture with a transformer, a single Restormer transformer block
 (Zamir et al., CVPR 2022) is inserted at the bottleneck only — the smallest
 spatial resolution, where the quadratic cost of ordinary self-attention
@@ -8,9 +8,7 @@ would be cheapest, except this block avoids that cost entirely: it computes
 attention across *channels* instead of pixels (Multi-Dconv Head Transposed
 Attention, MDTA), so its cost is linear in H*W, not quadratic. This gives
 the network a global receptive field at one point in the architecture —
-something none of the other from-scratch architectures have
-(`attention_unet.py`'s gate reweights skip connections but has no
-long-range receptive field; see `code-review.md` §5/§7.3).
+something none of the other from-scratch architectures have.
 """
 
 import tensorflow as tf

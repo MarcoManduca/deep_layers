@@ -41,8 +41,7 @@ class _ResizeToMatch(layers.Layer):
 def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """Two consecutive Conv → GroupNorm → ReLU operations (decoder only).
 
-    Round 2 (``fixing.md`` §2, "EfficientNet, handled separately") applies
-    #1/#3 to this **decoder** block only — never to the pretrained
+    Previous implementation applies to this **decoder** block only — never to the pretrained
     EfficientNetB0 *encoder* built in :func:`build_efficientnet_unet`, whose
     internal ``BatchNormalization``/ReLU/Swish layers are Keras Applications'
     own and are left completely untouched: replacing them would discard the
@@ -51,10 +50,9 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     swapping ``BatchNormalization`` → ``GroupNormalization`` and adding
     ``kernel_initializer="he_normal"`` here is safe and does not touch the
     encoder. See ``scripts.unet._conv_block`` for the identical pattern
-    already applied to the from-scratch (Round 1) architectures, and
-    ``fixing.md`` §3 for why the decoder's smallest channel count (16, the
-    last stage) needs :func:`scripts.norm_utils.num_groups` rather than a
-    fixed ``groups=32`` (32 does not divide 16).
+    already applied to the from-scratch architectures, and for why the
+    decoder's smallest channel count (16, the last stage) needs
+    :func:`scripts.norm_utils.num_groups` rather than a fixed ``groups=32`` (32 does not divide 16).
 
     Parameters
     ----------

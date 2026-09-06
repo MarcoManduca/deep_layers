@@ -19,9 +19,8 @@ def augment_pair(
 
     All randomness is **stateless**: it derives solely from ``seed``, so
     a given ``seed`` always produces the same augmentation. Combined with
-    a deterministic per-element seed (see
-    :func:`scripts.dataset.build_dataset`), this makes the augmented
-    training stream fully reproducible across runs.
+    a deterministic per-element seed (see :func:`scripts.dataset.build_dataset`),
+    this makes the augmented training stream fully reproducible across runs.
 
     Parameters
     ----------

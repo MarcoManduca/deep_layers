@@ -18,7 +18,7 @@ variant:
 Every conv block uses ``GroupNormalization`` rather than
 ``BatchNormalization``: at ``settings.BATCH_SIZE == 8``, GroupNorm's
 per-example statistics avoid the batch-size sensitivity BatchNorm has at
-this scale (see ``fixing.md`` #1).
+this scale.
 
 All three default to off/``0.0``, so ``build_unet_v2()`` with no arguments
 is architecturally identical to :func:`scripts.unet.build_unet`.
