@@ -26,16 +26,16 @@ def test_perfect_signal_scores_one() -> None:
 
     result = evaluate_detection(_perfect_signal(mask), mask)
 
-    assert result.auroc == pytest.approx(1.0)
+    assert result.auc == pytest.approx(1.0)
     assert result.average_precision == pytest.approx(1.0)
 
 
-def test_inverted_signal_scores_zero_auroc() -> None:
+def test_inverted_signal_scores_zero_auc() -> None:
     mask = _mask()
 
     result = evaluate_detection(1.0 - _perfect_signal(mask), mask)
 
-    assert result.auroc == pytest.approx(0.0)
+    assert result.auc == pytest.approx(0.0)
 
 
 def test_uninformative_signal_scores_chance() -> None:
@@ -44,7 +44,7 @@ def test_uninformative_signal_scores_chance() -> None:
 
     result = evaluate_detection(rng.random((_SIZE, _SIZE)), mask)
 
-    assert result.auroc == pytest.approx(0.5, abs=0.05)
+    assert result.auc == pytest.approx(0.5, abs=0.05)
     assert result.average_precision == pytest.approx(result.prevalence, abs=0.05)
 
 
@@ -78,7 +78,7 @@ def test_accepts_a_trailing_channel_axis() -> None:
     mask = _mask()
     signal = _perfect_signal(mask)[..., np.newaxis]
 
-    assert evaluate_detection(signal, mask).auroc == pytest.approx(1.0)
+    assert evaluate_detection(signal, mask).auc == pytest.approx(1.0)
 
 
 def test_subsampling_is_reproducible() -> None:
@@ -89,7 +89,7 @@ def test_subsampling_is_reproducible() -> None:
     first = evaluate_detection(signal, mask, max_samples=512, seed=7)
     second = evaluate_detection(signal, mask, max_samples=512, seed=7)
 
-    assert first.auroc == second.auroc
+    assert first.auc == second.auc
 
 
 def test_raises_when_shapes_differ() -> None:
@@ -121,7 +121,7 @@ def test_rank_signals_scores_every_candidate() -> None:
     assert set(results) == {"noise", "perfect"}
 
 
-def test_rank_signals_orders_by_auroc_descending() -> None:
+def test_rank_signals_orders_by_auc_descending() -> None:
     mask = _mask()
     rng = np.random.default_rng(0)
     signals = {

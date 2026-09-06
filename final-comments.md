@@ -56,7 +56,7 @@ sign that model capacity is not the constraint.
 Starting from the raw residual, the candidate signals split cleanly into two
 families with very different behaviour:
 
-| family | signals | detection AUROC |
+| family | signals | detection AUC |
 |---|---|---|
 | **magnitude** | `raw_delta`, learned `\|z\|` = `\|real − mu\|/σ` | 0.37–0.60 — weak, at or below chance on some images |
 | **structural** | `structural_delta` = `1 − local SSIM structure`; `structural_z` = `structural_delta / σ` | 0.62–0.72 — the usable signal |
@@ -79,9 +79,9 @@ contribution to detection.
 
 ## 4. Detection results
 
-Mean AUROC over `GT01`–`GT03`, best signal per model:
+Mean AUC over `GT01`–`GT03`, best signal per model:
 
-| model | signal | AUROC (single split) |
+| model | signal | AUC (single split) |
 |---|---|---|
 | `unet` | `structural_delta` | 0.71 |
 | `attention_unet` | `structural_delta` | 0.70 |
@@ -97,13 +97,13 @@ Two patterns are stable across every cut of the data:
   best heteroscedastic models (`attention_unet_nll`, `resunet_nll`) edge the best
   deterministic ones.
 - **Per-image difficulty is a property of the painting, not the model.** GT01 is
-  strong for everything (AUROC 0.73–0.82), GT03 is weak for everything
+  strong for everything (AUC 0.73–0.82), GT03 is weak for everything
   (0.57–0.69). GT03's underdrawing is visible only in the real IR — no RGB→IR
   model can predict it — so its residual is inherently harder to rank.
 
 Stroke coherence (reference-free) ranks the same structural signals on top,
 independently of the masks — a real corroboration. It is *not* a tie-breaker
-between signals of similar AUROC, though: it rewards oriented structure in
+between signals of similar AUC, though: it rewards oriented structure in
 general, so a noisier signal can score a spuriously high coherence.
 
 ---
@@ -115,12 +115,12 @@ on the two leading heteroscedastic models — real artworks partitioned by ID (n
 section leakage), all mockups in every training set, the three GT paintings
 external to every fold.
 
-| model | `structural_z` AUROC, per fold | 3-fold ensemble | held-out MAE |
+| model | `structural_z` AUC, per fold | 3-fold ensemble | held-out MAE |
 |---|---|---|---|
 | `attention_unet_nll` | 0.699 ± 0.008 | 0.719 | 0.103 ± 0.013 |
 | `resunet_nll` | 0.716 ± 0.011 | 0.728 | 0.092 ± 0.010 |
 
-- **Fold-to-fold standard deviation is ≈ 0.01 AUROC** — far below the gap between
+- **Fold-to-fold standard deviation is ≈ 0.01 AUC** — far below the gap between
   the signal families, and below the spread between paintings. The single fixed
   split used everywhere else in the project was adequate; cross-validation
   *confirms* the point estimates rather than deflating them.
@@ -131,7 +131,7 @@ external to every fold.
   ~1 std so not decisive alone), and clearly better on the hard painting GT03
   (`structural_z` ensemble 0.690 vs 0.653).
 
-**Headline result: `structural_z` detection AUROC ≈ 0.70 ± 0.01 per fold, ≈ 0.72
+**Headline result: `structural_z` detection AUC ≈ 0.70 ± 0.01 per fold, ≈ 0.72
 for a 3-fold ensemble**, on GT01–03.
 
 ---
@@ -143,7 +143,7 @@ theoretically correct response (see [theory-links.md](theory-links.md)). Measure
 against the deliverable, its record is mixed:
 
 - **Detection payoff is marginal.** `structural_z` beats `structural_delta` by
-  ~0.02 AUROC — real and repeatable, but small, and only for `resunet`/`attention`.
+  ~0.02 AUC — real and repeatable, but small, and only for `resunet`/`attention`.
 - **The learned σ is optimistic.** On clean held-out data the z-score standard
   deviation is 0.40–0.48 where a calibrated model gives 1.0 — roughly 2.5×
   overconfident — and the error/σ rank correlation is near zero: σ does not
@@ -171,15 +171,15 @@ The deterministic loss is `alpha·Charbonnier + (1−alpha)·(1−MS-SSIM)`. Swe
 
 - **`alpha = 0.16` (the default, MS-SSIM-dominated) is correct for detection** on
   `unet` and `attention_unet`. Raising `alpha` improves their pixel fidelity but
-  costs detection AUROC — `unet` goes from 0.71 to 0.67 (the floor) at
+  costs detection AUC — `unet` goes from 0.71 to 0.67 (the floor) at
   `alpha = 0.50`. This is the fidelity/detection tension made concrete: an
   L1-dominated objective optimises absolute level, not the local structure the
   underdrawing signal is made of.
 - **`resunet` at `alpha = 0.50` is the one genuine improvement in the sweep** — it
   raises *both* pixel fidelity (MAE 0.114 → 0.110, PSNR +0.4 dB) *and* detection
-  (AUROC 0.681 → 0.706, matching `unet`). If a single deterministic model has to
+  (AUC 0.681 → 0.706, matching `unet`). If a single deterministic model has to
   be picked, this is the configuration to use for `resunet`.
-- **`attention_unet` degrades sharply at higher `alpha`** — AUROC drops below the
+- **`attention_unet` degrades sharply at higher `alpha`** — AUC drops below the
   `mean(R,G,B)` floor. Its detection strength depends on the MS-SSIM-heavy loss.
 - **`alpha = 0.84` is a training-stability hazard** — `resunet` collapsed at that
   weight (SSIM 0.09); the others degraded.
@@ -205,7 +205,7 @@ not help detection.
   frozen-encoder baseline on every metric — the paired dataset is too small to
   fine-tune an ImageNet backbone without eroding the features that made it useful.
 - **Multi-scale band-pass sharpening of the residual.** Tuning a band-pass to
-  stroke width *lowers* AUROC (best band −0.04, most −0.06 to −0.12) while
+  stroke width *lowers* AUC (best band −0.04, most −0.06 to −0.12) while
   inflating stroke coherence non-specifically.
 - **Classical decompositions (PCA / ICA on the RGB+IR stack).** No component is
   operationally usable — the informative index is a different one on each
@@ -217,7 +217,7 @@ not help detection.
   `unet` / `resunet` on a split that excludes every synthetic paint-on-support
   mockup and cuts the remaining real artworks train/val at the pair level, with
   no artwork grouping. On `data/test/` this raised `unet` reconstruction fidelity
-  (+0.5 dB PSNR) but left `structural_delta` detection AUROC flat — `unet`
+  (+0.5 dB PSNR) but left `structural_delta` detection AUC flat — `unet`
   0.707 → 0.704, `resunet` 0.681 → 0.691, both inside the per-fold noise — with
   no coherent per-image direction. The fidelity gain is expected and
   uninteresting: pair-level splitting leaks each painting's style across
@@ -233,7 +233,7 @@ not help detection.
 ## 9. The deep model is not the bottleneck
 
 A parameter-free per-image ordinary-least-squares fit `IR ~ [R, G, B, 1]`, with no
-deep model at all, scores **AUROC 0.824 on GT01** — the single best per-image
+deep model at all, scores **AUC 0.824 on GT01** — the single best per-image
 number anywhere in the project — then collapses to 0.55 / 0.51 on GT02 / GT03.
 GT01's underdrawing is largely *linearly* separable from RGB; GT02's and GT03's
 are subtle enough that only the real IR reveals them. A trivial linear baseline
@@ -249,9 +249,9 @@ winner, and that disagreement is itself a finding:
 
 | goal | model(s) | signal | number |
 |---|---|---|---|
-| **hidden-detail detection** (the deliverable) | `resunet_nll` and `attention_unet_nll` — on par | `structural_z`, 3-fold ensemble | AUROC ≈ 0.72 |
+| **hidden-detail detection** (the deliverable) | `resunet_nll` and `attention_unet_nll` — on par | `structural_z`, 3-fold ensemble | AUC ≈ 0.72 |
 | **pixel fidelity** | `resunet` (at loss weight `alpha = 0.50`) | — | MAE ≈ 0.11, PSNR ≈ 19 dB |
-| **best deterministic detector** | `unet` or `attention_unet` (default loss weight) | `structural_delta` | AUROC ≈ 0.70 |
+| **best deterministic detector** | `unet` or `attention_unet` (default loss weight) | `structural_delta` | AUC ≈ 0.70 |
 
 For a best-effort detection map, use the **3-fold ensemble** of `resunet_nll`
 (or a combined `resunet_nll` + `attention_unet_nll` ensemble), report
@@ -289,7 +289,7 @@ Not worth pursuing: another architecture; more patches of the same works.
 Stated correctly, the result is a complete and honest story for a course project:
 
 > *RGB→IR translation plus structural residual analysis recovers the underdrawing
-> signal at AUROC ≈ 0.72 (3-fold ensemble, three hand-drawn masks). The
+> signal at AUC ≈ 0.72 (3-fold ensemble, three hand-drawn masks). The
 > heteroscedastic uncertainty head, though theoretically motivated, adds little
 > and its learned scale is poorly calibrated. A trivial per-image linear baseline
 > is competitive on the one painting whose underdrawing is linearly separable from

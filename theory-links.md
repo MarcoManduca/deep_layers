@@ -560,7 +560,7 @@ mockups in training, and leaves the three ground-truth paintings external to eve
 fold. It was run on the two leading heteroscedastic models to put an error bar on
 the detection metrics.
 
-The result: fold-to-fold standard deviation of ≈ 0.01 AUROC, far below any ranking
+The result: fold-to-fold standard deviation of ≈ 0.01 AUC, far below any ranking
 gap. Slide 57's instability does not materialise at this scale — the single fixed
 split was adequate, and cross-validation *confirms* its point estimates rather
 than deflating them (§8.7, and [final-comments.md](final-comments.md) §5).
@@ -1403,16 +1403,16 @@ These four slides are the theoretical grounding for
   form.
 - **Which is why accuracy appears nowhere in this project.** Slide 49's second
   bullet is the reason, and the code acts on it:
-  [detection.py](scripts/detection.py) reports AUROC and average precision, never
+  [detection.py](scripts/detection.py) reports AUC and average precision, never
   accuracy.
-- **AUROC is built from slide 51's two rates.** The ROC curve plots sensitivity
+- **AUC is built from slide 51's two rates.** The ROC curve plots sensitivity
   (`TP / actual positive`) against false positive rate (`FP / actual negative`),
   both defined on that slide. Because each is normalized by its own class total,
-  AUROC is prevalence-independent — which is why the code review calls it the
+  AUC is prevalence-independent — which is why the code review calls it the
   primary ranking.
 - **Average precision needs prevalence beside it, for slide 52's reason.**
   Precision (slide 50, `TP / predicted positive`) ignores true negatives, so unlike
-  AUROC it moves with class balance: AP's chance level *is* the prevalence.
+  AUC it moves with class balance: AP's chance level *is* the prevalence.
   [detection.py](scripts/detection.py) reports prevalence alongside AP precisely so
   the number can be read against its own baseline — a direct application of slide
   52's caveat.
@@ -1716,7 +1716,7 @@ task is replaced with a self-supervised proxy task.** Predicting IR from RGB
 requires no annotation — the label *is* the IR image, and there are 1167 pairs.
 The residual of that proxy task becomes the detection map (§8.2).
 
-The circle closes in [detection.py](scripts/detection.py): AUROC and average
+The circle closes in [detection.py](scripts/detection.py): AUC and average
 precision against a binary mask **are** segmentation metrics, grounded in L07
 slides 48–52 (§5.8). So we evaluate a per-pixel binary segmentation, produced by a
 regression head rather than a classification head, against the three masks
@@ -1885,7 +1885,7 @@ One table per lecture, in lecture order. `§` references point into this file.
 | "Memorizing the training set" (56) | — | a memorized painting yields a small residual *over the underdrawing too* (§1.2, §6.2) |
 | Mini-batch 50–256 typical (44) | `BATCH_SIZE = 8` | one of two independent flags on this parameter (§1.3, §3.5, §8.4) |
 | Loss = cost = objective (20) | used interchangeably | sanctioned; loss-vs-*metric* is the distinction that matters (§0.15) |
-| k-fold cross-validation (57–59) | grouped **k = 3** (`kfold.py`) on top of the fixed split | fold-to-fold std ≈ 0.01 AUROC — the single split was adequate (§1.5, §8.7) |
+| k-fold cross-validation (57–59) | grouped **k = 3** (`kfold.py`) on top of the fixed split | fold-to-fold std ≈ 0.01 AUC — the single split was adequate (§1.5, §8.7) |
 
 ## L04 — Feed-Forward Networks
 
@@ -1959,7 +1959,7 @@ One table per lecture, in lecture order. `§` references point into this file.
 | **Universality theorem (42–47)** | the `*_nll` models | RGB→IR **is not a function** — the deterministic ceiling is a category error (§5.7) |
 | Continuous functions only (47) | `structural_delta` | pentimento edges are near-discontinuities → weakest prediction at contours (§5.7, §6.5) |
 | "99% correct but useless" (48–49) | accuracy used **nowhere** | hidden-detail pixels are a tiny fraction of a painting (§5.8) |
-| Sensitivity / FPR / precision (50–51) | AUROC in [detection.py](scripts/detection.py) | rates normalized by their own class total → prevalence-independent (§5.8) |
+| Sensitivity / FPR / precision (50–51) | AUC in [detection.py](scripts/detection.py) | rates normalized by their own class total → prevalence-independent (§5.8) |
 | F-measure ignores true negatives (52) | AP reported **with prevalence** | AP's chance level *is* the prevalence (§5.8) |
 
 ## L08 — Autoencoders + Semantic Segmentation
@@ -2065,7 +2065,7 @@ L03 slide 57 prescribes k-fold for exactly the instability a sensitive model
 shows. `scripts/kfold.py` implements a grouped k-fold (k = 3): each fold holds out
 whole artworks, all mockups stay in training, the three ground-truth paintings are
 external to every fold. Run on the two leading heteroscedastic models, it gave a
-fold-to-fold standard deviation of ≈ 0.01 AUROC — far below any ranking gap. The
+fold-to-fold standard deviation of ≈ 0.01 AUC — far below any ranking gap. The
 single fixed split was adequate and cross-validation confirms its point estimates.
 See §1.5 and [final-comments.md](final-comments.md) §5.
 

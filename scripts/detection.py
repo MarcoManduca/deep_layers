@@ -31,7 +31,7 @@ class DetectionResult:
 
     Attributes
     ----------
-    auroc : float
+    auc : float
         Area under the ROC curve. ``0.5`` is chance, ``1.0`` perfect, below
         ``0.5`` means the signal ranks detail *below* background.
     average_precision : float
@@ -41,7 +41,7 @@ class DetectionResult:
         Fraction of pixels marked positive in the reference mask.
     """
 
-    auroc: float
+    auc: float
     average_precision: float
     prevalence: float
 
@@ -107,7 +107,7 @@ def evaluate_detection(
         values, labels = values[index], labels[index]
 
     return DetectionResult(
-        auroc=float(roc_auc_score(labels, values)),
+        auc=float(roc_auc_score(labels, values)),
         average_precision=float(average_precision_score(labels, values)),
         prevalence=float(prevalence),
     )
@@ -140,10 +140,10 @@ def rank_signals(
     Returns
     -------
     dict[str, DetectionResult]
-        Results under the same keys, ordered best-AUROC first.
+        Results under the same keys, ordered best-AUC first.
     """
     results = {
         name: evaluate_detection(signal, mask, max_samples=max_samples, seed=seed)
         for name, signal in signals.items()
     }
-    return dict(sorted(results.items(), key=lambda kv: kv[1].auroc, reverse=True))
+    return dict(sorted(results.items(), key=lambda kv: kv[1].auc, reverse=True))

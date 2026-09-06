@@ -169,7 +169,7 @@ def plot_gt_signal_gallery(
 ) -> plt.Figure:
     """Show RGB / real IR / ground-truth mask alongside a gallery of signal maps.
 
-    The GT-scoring notebooks (``040``/``041``) compute AUROC/coherence
+    The GT-scoring notebooks (``040``/``041``) compute AUC/coherence
     numbers against ``data/test/annotations/*_Map.png`` masks but never
     render an image — this is the qualitative counterpart: can a human
     actually see the underdrawing the mask marks, in the signal that

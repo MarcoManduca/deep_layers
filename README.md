@@ -78,29 +78,37 @@ kernel.
 
 ### Signals and evaluation
 
-Four signal maps are scored, two per model family. All start from the raw
-residual `raw_delta = |real_IR − mu|`.
+Four signal maps are scored, two per model family. 
+All start from the raw residual `raw_delta = |real_IR − mu|`.
 
-Deterministic models (one IR value per pixel, no uncertainty):
+Deterministic models:
 
-- **`raw_delta`** = `|real_IR − mu|` — the plain residual between the real IR and the predicted IR;
-- **`structural_delta`** = `1 − local SSIM structure` — isolates the  structural-similarity term of SSIM, so substrate and acquisition grey-level  shifts that inflate `raw_delta` without indicating hidden content are ignored.
+- **`raw_delta`** = `|real_IR − mu|`
+ the basic residual between the real IR and the predicted IR;
+- **`structural_delta`** = `1 − local SSIM structure`
+isolates the  structural-similarity term of SSIM.
 
-Heteroscedastic (NLL) models (predict `mu` plus a Laplace log-scale `log_b`
-per pixel; `σ = b·√2` is the Laplace standard deviation):
+Heteroscedastic (NLL) models (predict `mu` plus a Laplace log-scale `log_b` per pixel; `σ = b·√2` is the Laplace standard deviation):
 
-- **`|z|`** = `|real_IR − mu| / σ` — the raw residual divided by the model's own predicted uncertainty, so a large residual only counts where the model expected to be confident;
-- **`structural_z`** = `structural_delta / (smoothed σ)` — the structural signal normalised by how variable the model expects that region to be.
+- **`|z|`** = `|real_IR − mu| / σ`
+the raw residual divided by the model's own predicted uncertainty, so a large residual only counts where the model expected to be confident;
+- **`structural_z`** = `structural_delta / (smoothed σ)`
+the structural signal normalised by how variable the model expects that region to be.
 
 Evaluation axes:
 
-- **Detection against hand-drawn masks** (`scripts/detection.py`) — scores any candidate signal against a mask in `data/test/annotations/<id>_Map.png`:
-  - **AUROC** — rank-based, prevalence-independent and unaffected by display contrast; the primary ranking.
-  - **average precision (AP)** — area under the precision–recall curve; prevalence-dependent, so its no-skill baseline is `prevalence`, not `0.5`.
-  - **prevalence** — fraction of mask pixels that are positive; reported alongside AP.
-  - **lift** = `AP / prevalence` — AP normalised against chance, so signals scored on masks with different prevalence stay comparable (lift 1 = no skill).
-- **Stroke coherence** (`scripts/stroke_stats.py`) — reference-free  structure-tensor coherence. An underdrawing is oriented, elongated strokes;
-  prediction noise is isotropic. Needs no mask, so it corroborates the mask-based ranking independently.
+- **Detection against hand-drawn masks**
+scores any candidate signal against a mask in `data/test/annotations/<id>_Map.png`:
+  - **AUC**
+  rank-based, prevalence-independent and unaffected by display contrast, the primary ranking.
+  - **average precision (AP)**
+  area under the precision–recall curve, prevalence-dependent.
+  - **prevalence**
+  fraction of mask pixels that are positive, reported alongside AP.
+  - **lift** = `AP / prevalence`
+  AP normalised against chance, so signals scored on masks with different prevalence stay comparable.
+- **Stroke coherence** 
+reference-free  structure-tensor coherence.
 
 ---
 
@@ -108,20 +116,20 @@ Evaluation axes:
 
 ```
 deep_layers/
-├── data/                              # not versioned
-│   ├── rgb/ ir/                       # paired training corpus (filename stems match)
-│   └── test/                          # held-out real paintings for signal evaluation
-│       ├── rgb/ ir/                   # (rgb, ir) pairs, full resolution
-│       └── annotations/               # hand-drawn masks, <stem>_Map.png
-├── models/                            # checkpoints, not versioned
+├── data/                                      # not versioned
+│   ├── rgb/ ir/                               # paired training corpus (filename stems match)
+│   └── test/                                  # held-out real paintings for signal evaluation
+│       ├── rgb/ ir/                           # (rgb, ir) pairs, full resolution
+│       └── annotations/                       # hand-drawn masks, <stem>_Map.png
+├── models/                                    # checkpoints, not versioned
 │   ├── deterministic/<arch>/best_model.keras
 │   └── nll/<arch>_nll/best_model.keras
-├── notebooks/                         # see "Reproducing the pipeline" below
-├── scripts/                          # library functions
-├── env/environment.yml               # conda environment (option A)
-├── requirements.txt                  # pip dependencies (option B)
+├── notebooks/                                 # see "Reproducing the pipeline" below
+├── scripts/                                   # library functions
+├── env/environment.yml                        # conda environment (option A)
+├── requirements.txt                           # pip dependencies (option B)
 ├── README.md
-└── LICENSE                            # CC BY-SA 4.0
+└── LICENSE                                    # CC BY-SA 4.0
 ```
 
 ---
@@ -208,7 +216,7 @@ results of the one before it.
 | `010` | dataset exploration and split-integrity check |
 | `02x` | training — base deterministic, heteroscedastic, EfficientNet, the `unet` variants, and the loss-weight / β sweeps |
 | `03x` | reconstruction fidelity (MAE / SSIM / PSNR) on the held-out test set, per model group |
-| `04x` | signal detection (AUROC, stroke coherence, σ calibration) against the hand-drawn masks |
+| `04x` | signal detection (AUC, stroke coherence, σ calibration) against the hand-drawn masks |
 | `05x` | signal maps across every `data/test/` image, for perceptual inspection and reference-free ranking |
 | `06x` | grouped k-fold cross-validation — training and evaluation |
 | `Cx`, `Px` | self-contained studies, pilots and and experiments |

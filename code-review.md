@@ -44,7 +44,7 @@ scripts/
 ├── delta_analysis.py         local SSIM luminance/contrast/structure decomposition; raw/structural delta
 ├── calibration.py            sigma calibration metrics; learned and structural z-score
 ├── contrast.py               display-contrast control (ZScale) for z-score maps
-├── detection.py              AUROC / average precision of a signal against a mask
+├── detection.py              AUC / average precision of a signal against a mask
 ├── stroke_stats.py           reference-free structure-tensor coherence
 │
 └── visualization.py visualization_nll.py   plotting helpers
@@ -173,9 +173,9 @@ Laplace NLL, and — deliberately alongside — sharpness and dispersion, since 
 (fixed or percentile, optional gamma), so a contrast variant costs a re-plot, not
 a re-prediction. `apply_many` derives one shared limit across several maps for an
 honest cross-model figure. Note that display contrast cannot change a rank-based
-metric like AUROC — it is a rendering choice only.
+metric like AUC — it is a rendering choice only.
 
-**`detection.py`** — `evaluate_detection` / `rank_signals`: AUROC (primary,
+**`detection.py`** — `evaluate_detection` / `rank_signals`: AUC (primary,
 prevalence-independent) and average precision (prevalence reported alongside,
 since that is AP's chance level) of any magnitude signal against any mask.
 
