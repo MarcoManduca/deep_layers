@@ -53,7 +53,7 @@ of any size (input is padded to the nearest multiple of 16 at inference).
 | `unet_dilated` / `unet_v2_dilated` | `unet` / `unet_v2` with the plain bottleneck replaced by a parallel-dilation (ASPP-style) block | [17] |
 | `efficientnet_unet` | Pretrained (ImageNet) EfficientNetB0 encoder + U-Net decoder; `efficientnet_unet_ft` additionally fine-tunes the encoder end-to-end at a low learning rate | [5, 6] |
 
-**Heteroscedastic** — `(H, W, 3)` → `(H, W, 2)` = `(mu, log_b)`:
+**Heteroscedastic** [12] — `(H, W, 3)` → `(H, W, 2)` = `(mu, log_b)`:
 `unet_nll`, `resunet_nll`, `attention_unet_nll`, `efficientnet_unet_nll`
 (+ `efficientnet_unet_nll_ft`). Each shares its deterministic counterpart's
 backbone and adds a second output channel for a per-pixel Laplace log-scale.
@@ -64,11 +64,11 @@ The same recipe is applied uniformly across the whole model set:
 
 | Element | Choice | Notes |
 |---|---|---|
-| Normalisation | `GroupNormalization` throughout | replaces `BatchNormalization`, which is unstable at `BATCH_SIZE = 8`; the pretrained EfficientNet encoder keeps its own BatchNorm so the ImageNet statistics are preserved |
-| Weight init | He (`he_normal`) on every ReLU-preceding conv | Xavier is derived for `tanh`; He matches ReLU |
+| Normalisation | `GroupNormalization` throughout [9] | replaces `BatchNormalization`, which is unstable at `BATCH_SIZE = 8`; the pretrained EfficientNet encoder keeps its own BatchNorm so the ImageNet statistics are preserved |
+| Weight init | He (`he_normal`) on every ReLU-preceding conv [10] | Xavier is derived for `tanh`; He matches ReLU |
 | Deterministic loss | `combined_loss` = `0.16·Charbonnier + 0.84·(1 − MS-SSIM)` | the `Mix` configuration of Zhao et al. (2016) [7]; MS-SSIM-dominated, favouring perceived structure over raw pixel error |
 | Heteroscedastic loss | `laplace_nll_loss`, β = 0.5 | Laplace (L1-weighted-by-scale) NLL, β-reweighted after Seitzer et al. (2022) [13]; one loss per architecture |
-| Optimiser | Adam, `weight_decay = 1e-5`, `clipvalue = 1.0` | gradient clipping is per-element, needed for MS-SSIM's gradient near zero structural error |
+| Optimiser | Adam [11], `weight_decay = 1e-5`, `clipvalue = 1.0` | gradient clipping is per-element, needed for MS-SSIM's gradient near zero structural error |
 | Callbacks | `ModelCheckpoint`, `EarlyStopping`, `ReduceLROnPlateau`, all monitoring `val_loss` | patience 20 / `min_delta = 5e-4`; `EPOCHS = 100` cap |
 | Data split | artwork-and-mockups (`scripts/dataset.py`) | real artworks are grouped so no section of a painting leaks across folds; the six synthetic paint-on-support *mockup* groups are split at the pair level, since they exist to be learnt from, not generalised to |
 | Augmentation | shared flips on RGB+IR; brightness/contrast jitter on RGB only; optional shared random crop | IR reflectance is a physical property, so photometric jitter must not touch it; only the training split is augmented |
@@ -86,7 +86,7 @@ Deterministic models:
 - **`raw_delta`** = `|real_IR − mu|`
  the basic residual between the real IR and the predicted IR;
 - **`structural_delta`** = `1 − local SSIM structure`
-isolates the  structural-similarity term of SSIM.
+isolates the  structural-similarity term of SSIM [8].
 
 Heteroscedastic (NLL) models (predict `mu` plus a Laplace log-scale `log_b` per pixel; `σ = b·√2` is the Laplace standard deviation):
 
@@ -109,6 +109,8 @@ scores any candidate signal against a mask in `data/test/annotations/<id>_Map.pn
   AP normalised against chance, so signals scored on masks with different prevalence stay comparable.
 - **Stroke coherence** 
 reference-free  structure-tensor coherence.
+- **Uncertainty calibration** (NLL models)
+coverage, sharpness and a reliability curve on the predicted `σ` [18, 19].
 
 ---
 
