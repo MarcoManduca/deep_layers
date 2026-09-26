@@ -129,7 +129,7 @@ deep_layers/
 ├── env/environment.yml                        # conda environment (option A)
 ├── requirements.txt                           # pip dependencies (option B)
 ├── README.md
-└── LICENSE                                    # CC BY-SA 4.0
+└── LICENSE                                    # CC BY-NC-SA 4.0
 ```
 
 ---
