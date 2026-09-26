@@ -5,8 +5,8 @@ proceeds from the reconstruction task, to the detection signal built on top of i
 to cross-validation, to the design choices that were tested and did *not* help,
 and finally to the recommended models and the ceiling of the approach.
 
-The theory behind the design is in [theory-links.md](theory-links.md); the code is
-in [code-review.md](code-review.md).
+The reasoning behind the design is in [architectures.md](architectures.md); the
+code is in [code-review.md](code-review.md).
 
 ---
 
@@ -139,8 +139,8 @@ for a 3-fold ensemble**, on GT01–03.
 ## 6. The heteroscedastic head
 
 The RGB→IR mapping is genuinely one-to-many, and the heteroscedastic head is the
-theoretically correct response (see [theory-links.md](theory-links.md)). Measured
-against the deliverable, its record is mixed:
+theoretically correct response (see [architectures.md](architectures.md) §11).
+Measured against the deliverable, its record is mixed:
 
 - **Detection payoff is marginal.** `structural_z` beats `structural_delta` by
   ~0.02 AUC — real and repeatable, but small, and only for `resunet`/`attention`.

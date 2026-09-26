@@ -2,8 +2,8 @@
 
 The final state of `scripts/` and `tests/unit/`: what each module does, the
 non-obvious implementation decisions and why they were made, and the limitations
-that remain. The theoretical justification for the modelling choices is in
-[theory-links.md](theory-links.md); the quantitative results are in
+that remain. The reasoning behind the modelling choices is in
+[architectures.md](architectures.md); the quantitative results are in
 [final-comments.md](final-comments.md).
 
 ---

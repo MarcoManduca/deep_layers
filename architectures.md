@@ -4,8 +4,7 @@ What each variant changes with respect to `unet`, why it was tried, and what
 came out of it. Every claim is traced back to the code.
 
 The overview of the models is in [README.md](README.md); the full quantitative
-results in [final-comments.md](final-comments.md); the theory behind the choices
-in [theory-links.md](theory-links.md).
+results in [final-comments.md](final-comments.md).
 
 ---
 
