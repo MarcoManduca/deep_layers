@@ -315,25 +315,21 @@ A real `pytest` suite and a `ruff` configuration exist, but nothing runs them on
 push or PR. **Fix**: a minimal GitHub Actions workflow running `ruff check`,
 `ruff format --check`, `pytest`.
 
-### 5.3 No `.env.example`
-`config.py` supports `.env` overrides but no template documents the keys. **Fix**:
-add `.env.example` listing every `Settings` field with its default.
-
-### 5.4 Early-bound `settings` defaults in signatures
+### 5.3 Early-bound `settings` defaults in signatures
 `trainer.py` / `trainer_nll.py` / `config.py` bind `settings.X` as *default
 parameter values*, evaluated once at import. Mutating `settings` at runtime and
 then calling one of these functions without the explicit argument silently uses
 the import-time value. **Fix**: default to `None` and resolve inside the body, or
 document `settings` as immutable after import.
 
-### 5.5 Whole-image inference is not compared against tiled inference
+### 5.4 Whole-image inference is not compared against tiled inference
 Every evaluation runs `pad_to_multiple` + a single `model.predict()` on the
 full-resolution `data/test/` images, which are far larger than the training
 patches. It runs without memory issues on this hardware, but whether a
 Gaussian-blended overlapping-patch path would change the results on very large
 scans was never measured directly.
 
-### 5.6 Data-loading optimisations left on the table
+### 5.5 Data-loading optimisations left on the table
 `build_dataset` re-decodes JPEGs every epoch (a `.cache()` after pair loading
 would remove that), and no architecture opts into mixed precision. Both are
 low-risk throughput wins given the 100-epoch cap and the size of the model set.

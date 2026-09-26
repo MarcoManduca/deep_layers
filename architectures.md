@@ -793,7 +793,7 @@ RGB ─► ×255 ─► ┌─ H/2   16 channels ──────────�
 
 ### The idea
 
-768 pairs against **1.2 million ImageNet images**. The early layers of any CNN
+863 pairs against **1.2 million ImageNet images**. The early layers of any CNN
 learn generic things — edges, textures, gradients: there is nothing specifically
 pictorial about an edge detector.
 
@@ -897,7 +897,7 @@ disorderly gradients. With the encoder already unfrozen, those gradients would
 
 - `efficientnet_unet` groups with `unet` and `attention_unet`:
   PSNR **16.2–16.5**.
-- `efficientnet_unet_ft` **does not beat the frozen baseline on any metric**: 768
+- `efficientnet_unet_ft` **does not beat the frozen baseline on any metric**: 863
   pairs are not enough to fine-tune an ImageNet network without eroding the very
   features that made it useful.
 

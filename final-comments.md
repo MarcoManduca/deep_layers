@@ -59,7 +59,7 @@ families with very different behaviour:
 | family | signals | detection AUC |
 |---|---|---|
 | **magnitude** | `raw_delta`, learned `\|z\|` = `\|real − mu\|/σ` | 0.37–0.60 — weak, at or below chance on some images |
-| **structural** | `structural_delta` = `1 − local SSIM structure`; `structural_z` = `structural_delta / σ` | 0.62–0.72 — the usable signal |
+| **structural** | `structural_delta` = `1 − local SSIM structure`; `structural_z` = `structural_delta / smoothed(σ)` | 0.62–0.72 — the usable signal |
 
 The gap between the two families dwarfs any difference *within* either. The reason
 is physical: substrate absorption, non-uniform illumination and exposure move a
