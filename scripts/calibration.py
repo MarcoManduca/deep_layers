@@ -538,8 +538,9 @@ def evaluate_calibration(
     differs structurally between Gaussian and Laplace, so ``distribution``
     dispatches only that one term. Every live NLL checkpoint
     (`unet_nll`/`resunet_nll`/`attention_unet_nll`/ `efficientnet_unet_nll`)
-    is trained as Laplace, so ``distribution= "laplace"`` with :func:`laplace_sigma_from_scale`
-    (``b * sqrt(2)``, **not** ``exp(0.5 * log_b)``) is the correct choice for all of them.
+    is trained as Laplace, so ``distribution="laplace"`` with
+    :func:`laplace_sigma_from_scale` (``b * sqrt(2)``, **not**
+    ``exp(0.5 * log_b)``) is the correct choice for all of them.
     ``distribution="gaussian"`` (the default, kept for backward
     compatibility and exercised directly by ``tests/unit/test_calibration.py``)
     remains available only for scoring an older checkpoint trained before

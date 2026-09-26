@@ -265,9 +265,7 @@ def mockup_free_train_val_split(
         mockup_ids = settings.MOCKUP_ARTWORK_IDS
     mockup_ids = set(mockup_ids)
 
-    real_pairs = [
-        p for p in pairs if extract_artwork_id(p[0].stem) not in mockup_ids
-    ]
+    real_pairs = [p for p in pairs if extract_artwork_id(p[0].stem) not in mockup_ids]
     train_pairs, val_pairs = train_test_split(
         real_pairs, test_size=val_ratio, random_state=seed
     )

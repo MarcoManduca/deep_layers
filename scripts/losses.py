@@ -374,7 +374,8 @@ def laplace_nll_loss(
     term of a heteroscedastic model — Laplace NLL is L1-weighted-by-scale,
     Gaussian NLL is L2-weighted-by-variance. The ``stop_gradient(b)^beta``
     weighting generalises the beta-reweighting defined for the Gaussian
-    variance — to the Laplace scale. ``beta = 0`` recovers the plain Laplace NLL exactly.
+    variance — to the Laplace scale. ``beta = 0`` recovers the plain Laplace
+    NLL exactly.
 
     This loss replaces both :func:`gaussian_nll_loss` and
     :func:`beta_gaussian_nll_loss` for every NLL architecture — `unet_nll`,

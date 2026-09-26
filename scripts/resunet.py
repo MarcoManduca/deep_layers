@@ -8,7 +8,9 @@ from scripts.norm_utils import relu as _relu
 
 
 def _residual_block(x: tf.Tensor, filters: int) -> tf.Tensor:
-    """Residual block: Conv → GroupNorm → ReLU → Conv → GroupNorm → Add(shortcut) → ReLU.
+    """Residual block with a projection shortcut.
+
+    Conv → GroupNorm → ReLU → Conv → GroupNorm → Add(shortcut) → ReLU.
 
     A 1×1 projection shortcut is always applied to match channel counts.
     This architecture has exactly one residual block per depth level, and
