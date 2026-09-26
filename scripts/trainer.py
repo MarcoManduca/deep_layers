@@ -24,14 +24,14 @@ _BUILDERS = {
     "resunet": build_resunet,
     "attention_unet": build_attention_unet,
     "efficientnet_unet": build_efficientnet_unet,
-    # Phase-2 (unfrozen-encoder) fine-tuning checkpoint (fixing.md #6,
-    # Round 2): same builder as "efficientnet_unet", saved under its own
+    # Phase-2 (unfrozen-encoder) fine-tuning checkpoint (Round 2):
+    # same builder as "efficientnet_unet", saved under its own
     # `arch_name` (`models/deterministic/efficientnet_unet_ft/`) so the
     # frozen-encoder baseline is never overwritten. `train_single.py`
     # passes `--kwargs '{"freeze_encoder": false}' --init-from
     # <efficientnet_unet checkpoint>` to build and warm-start this variant.
     "efficientnet_unet_ft": build_efficientnet_unet,
-    # Round 3 (fixing.md #7, exploratory): dilated-bottleneck variants of
+    # Round 3 (exploratory): dilated-bottleneck variants of
     # "unet"/"unet_v2", saved under their own `arch_name` rather than
     # overwriting the plain checkpoints, so the two can be compared
     # directly (see scripts/aspp.py).
@@ -56,7 +56,7 @@ def get_model(arch_name: str, **kwargs: object) -> tf.keras.Model:
         ``"efficientnet_unet_ft"`` (the Round 2 two-phase fine-tuning
         checkpoint — same builder as ``"efficientnet_unet"``, see
         ``_BUILDERS``), ``"unet_dilated"``, ``"unet_v2_dilated"`` (Round 3
-        dilated-bottleneck variants, ``fixing.md`` #7), or
+        dilated-bottleneck variants), or
         ``"unet_residual"`` (residual output head, see
         :mod:`scripts.unet_residual`).
     **kwargs

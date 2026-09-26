@@ -35,7 +35,7 @@ _BUILDERS_NLL = {
     "attention_unet_nll": build_attention_unet_nll,
     "efficientnet_unet_nll": build_efficientnet_unet_nll,
     # Phase-2 (unfrozen-encoder) fine-tuning checkpoint, the NLL sibling of
-    # trainer.py's "efficientnet_unet_ft" (fixing.md #6, Round 2). Same
+    # trainer.py's "efficientnet_unet_ft" (Round 2). Same
     # builder as "efficientnet_unet_nll", saved under its own `arch_name`
     # (`models/nll/efficientnet_unet_nll_ft/`) so the frozen-encoder NLL
     # baseline is never overwritten. Implemented symmetrically with the
@@ -48,7 +48,7 @@ _BUILDERS_NLL = {
 # (min_log_var, max_log_var, beta) signature so callers can select one by
 # name without caring which extra arguments it actually uses — `beta` is
 # ignored by "gaussian_nll" and meaningful for "beta_nll"/"laplace_nll".
-# "laplace_nll" is the default (fixing.md #10) for every NLL architecture,
+# "laplace_nll" is the default for every NLL architecture,
 # including efficientnet_unet_nll since Round 2. "gaussian_nll"/"beta_nll"
 # remain registered for re-evaluating older checkpoints trained before that
 # collapse, not because any architecture still defaults to them.
@@ -146,8 +146,9 @@ def compile_model_nll(
         Upper clip bound for the second channel inside the loss.
     loss_name : str
         Which NLL loss to compile with — one of :data:`NLL_LOSSES`.
-        Default ``"laplace_nll"`` (:func:`scripts.losses.laplace_nll_loss`,
-        ``fixing.md`` #10) — the current default for every NLL architecture,
+        Default ``"laplace_nll"``
+        (:func:`scripts.losses.laplace_nll_loss`) — the current default for
+        every NLL architecture,
         including `efficientnet_unet_nll`/`efficientnet_unet_nll_ft` since
         Round 2. Pass ``"gaussian_nll"``/``"beta_nll"`` explicitly only to
         re-evaluate an older checkpoint trained before that collapse.
@@ -155,11 +156,11 @@ def compile_model_nll(
         Weighting exponent, used by ``"beta_nll"``/``"laplace_nll"``,
         ignored by ``"gaussian_nll"``.
     weight_decay : float
-        L2 weight decay passed to ``Adam`` (``fixing.md`` #2).
+        L2 weight decay passed to ``Adam``.
     clipvalue : float
         Per-element gradient clip passed to ``Adam(clipvalue=...)`` — see
         ``scripts.trainer.compile_model``'s docstring and
-        ``settings.GRADIENT_CLIP_VALUE`` for why (``fixing.md`` §7).
+        ``settings.GRADIENT_CLIP_VALUE`` for why.
 
     Returns
     -------

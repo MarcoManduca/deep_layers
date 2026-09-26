@@ -35,7 +35,7 @@ into the checkpoint. Point ``--model-dir`` at a per-beta directory so the
 runs do not overwrite each other.
 
 ``--fold N --kfold-k K`` switches the train/val split to
-``scripts.kfold.fold_split`` for ``fixing.md`` #4's Round 4 cross-validation
+``scripts.kfold.fold_split`` for Round 4 cross-validation
 (``060_kfold_training.ipynb`` — one subprocess per fold, each resumable).
 """
 
@@ -68,11 +68,11 @@ def _build_datasets(
 
     With ``fold is None`` and ``generic_split is False`` (default): the
     artwork-and-mockups split shared by ``020``/``021``/``023``. With ``fold``
-    set: the grouped k-fold split (``scripts.kfold``, ``fixing.md``
-     — fold ``fold`` of ``kfold_k``, held-out real artworks as val, the rest
+    set: the grouped k-fold split (``scripts.kfold``)
+    — fold ``fold`` of ``kfold_k``, held-out real artworks as val, the rest
     plus all mockups as train. With ``generic_split`` set: the mockup-free
     ablation split (``scripts.dataset.mockup_free_train_val_split``,
-    ``020_bis_training_generic.ipynb`` / ``C6``) — every mockup pair dropped,
+    ``062_training_generic.ipynb`` / ``C6``) — every mockup pair dropped,
     the rest cut train/val at the pair level with no grouping and no test fold.
     ``fold`` and ``generic_split`` are mutually exclusive.
     """
@@ -175,7 +175,7 @@ def main() -> None:
         default=None,
         help="Adam learning rate. Defaults to settings.LEARNING_RATE; pass "
         "settings.FINETUNE_LEARNING_RATE explicitly for a phase-2 "
-        "fine-tuning run (fixing.md #6).",
+        "fine-tuning run (Round 2).",
     )
     parser.add_argument(
         "--init-from",
@@ -213,7 +213,7 @@ def main() -> None:
         action="store_true",
         help="Use the mockup-free ablation split "
         "(scripts.dataset.mockup_free_train_val_split, "
-        "020_bis_training_generic.ipynb / C6): every mockup pair is dropped and "
+        "062_training_generic.ipynb / C6): every mockup pair is dropped and "
         "the rest is cut train/val at the pair level with no artwork grouping "
         "and no test fold. Mutually exclusive with --fold. Point --model-dir at "
         "a separate directory (e.g. models/deterministic_generic).",

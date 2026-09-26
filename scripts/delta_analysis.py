@@ -208,7 +208,7 @@ def analyze_delta(
 
     Decomposes local SSIM into luminance/contrast/structure to separate
     genuine hidden-detail signal from substrate/acquisition-driven
-    gray-level shifts. See ``note.md`` for the full rationale.
+    gray-level shifts. See ``architectures.md`` §12 for the full rationale.
 
     Parameters
     ----------

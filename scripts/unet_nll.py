@@ -25,7 +25,7 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """Two consecutive Conv → GroupNorm → ReLU operations.
 
     Uses ``GroupNormalization`` instead of ``BatchNormalization``
-    (``fixing.md`` #1) and He init instead of Xavier (``fixing.md`` #3).
+    and He init instead of Xavier.
 
     Parameters
     ----------

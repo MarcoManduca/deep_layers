@@ -86,7 +86,7 @@ def build_unet_residual(
     # darker (underdrawing showing through) or lighter than the visible
     # grey level. Glorot (the Keras default) rather than the he_normal
     # used inside the conv blocks, since he_normal assumes a ReLU-like
-    # activation (fixing.md #3) and this head is tanh.
+    # activation and this head is tanh.
     residual = layers.Conv2D(1, 1, activation="tanh", name="residual")(x)
 
     gray = RGBToGray(name="rgb_gray")(inputs)

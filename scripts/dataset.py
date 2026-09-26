@@ -227,7 +227,7 @@ def mockup_free_train_val_split(
 ) -> tuple[list[tuple[Path, Path]], list[tuple[Path, Path]]]:
     """Split into train / val only, after dropping every mockup pair.
 
-    An ablation split (``020_bis_training_generic.ipynb`` / ``C6``) that
+    An ablation split (``062_training_generic.ipynb`` / ``C6``) that
     deliberately breaks the two rules
     :func:`mockup_aware_train_val_test_split` enforces, so the effect of each
     can be measured:

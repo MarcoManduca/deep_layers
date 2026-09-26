@@ -213,7 +213,7 @@ not help detection.
 - **Loss-weight sweep for the heteroscedastic β.** β = 0.5 is already the
   best-calibrated point; no other value improves it.
 - **Dropping the mockups and the grouped split.** An ablation
-  (`020_bis_training_generic.ipynb` / `C6_mockups_vs_generic.ipynb`) retrained
+  (`062_training_generic.ipynb` / `C6_mockups_vs_generic.ipynb`) retrained
   `unet` / `resunet` on a split that excludes every synthetic paint-on-support
   mockup and cuts the remaining real artworks train/val at the pair level, with
   no artwork grouping. On `data/test/` this raised `unet` reconstruction fidelity

@@ -22,11 +22,10 @@ def _conv_block(x: tf.Tensor, filters: int) -> tf.Tensor:
     """Two consecutive Conv → GroupNorm → ReLU operations.
 
     Uses ``GroupNormalization`` instead of ``BatchNormalization``
-    (``fixing.md`` #1) and He init instead of Xavier (``fixing.md`` #3).
+    and He init instead of Xavier.
     Only the encoder/decoder blocks are touched — the bottleneck's
     ``RestormerBlock`` keeps its own ``LayerNormalization``, the
-    established choice for its Transformer-derived sub-blocks (see
-    ``fixing.md`` §3).
+    established choice for its Transformer-derived sub-blocks.
 
     Parameters
     ----------

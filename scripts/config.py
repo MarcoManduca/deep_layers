@@ -42,7 +42,7 @@ class Settings(BaseSettings):
         out for test.
     KFOLD_K : int
         Number of folds for Round 4 grouped cross-validation
-        (``scripts.kfold``, ``fixing.md`` #4). Real artworks are partitioned
+        (``scripts.kfold``). Real artworks are partitioned
         into this many groups by artwork ID; mockups always stay in train.
     KFOLD_SEED : int
         Seed for the fold assignment, kept separate from ``SEED`` so the
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
         ``scripts.losses.charbonnier_loss``.
     WEIGHT_DECAY : float
         L2 weight decay passed to ``Adam(weight_decay=...)`` during
-        training (``fixing.md`` #2).
+        training.
     GRADIENT_CLIP_VALUE : float
         Per-element gradient clip passed to ``Adam(clipvalue=...)``.
         Guards against ``tf.image.ssim_multiscale``'s known gradient
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
         i.e. ``+Inf``. Unlike ``clipnorm`` — which can turn an already-Inf
         gradient into ``NaN`` via ``Inf/Inf`` when computing the global
         norm — per-element ``clipvalue`` caps each entry directly, turning
-        ``Inf`` into a large finite number instead (`fixing.md` §7).
+        ``Inf`` into a large finite number instead.
     NLL_BETA : float
         Weighting exponent for the beta-weighted NLL losses
         (``scripts.losses.beta_gaussian_nll_loss``,
@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     EARLY_STOPPING_MIN_DELTA : float
         Minimum ``val_loss`` change to count as an improvement for
         early stopping. ``5e-4`` (not ``0.0``): observed on `unet_v2`'s
-        Round 1/3 run (``fixing.md`` §7.1) — after `ReduceLROnPlateau`'s
+        Round 1/3 run — after `ReduceLROnPlateau`'s
         one LR drop, both train and val loss went flat (~0.003 total
         change over 14 epochs) while `0.0` let noise-level, sub-1e-3
         wiggles in the ~21-batch validation set keep resetting the
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
         Number of Laplacian pyramid levels in ``combined_loss_advanced``.
     DILATION_RATES : list[int]
         Dilation rate for each parallel branch of the Round 3 dilated
-        bottleneck (``scripts.aspp.dilated_bottleneck``, ``fixing.md`` #7),
+        bottleneck (``scripts.aspp.dilated_bottleneck``),
         used by ``unet_dilated``/``unet_v2_dilated``.
     CROP_SIZE : int or None
         If set, training augmentation randomly crops each pair to a square
@@ -129,7 +129,7 @@ class Settings(BaseSettings):
         Lower clip bound for the second output channel of every
         heteroscedastic model, for numerical stability. Named for its
         original Gaussian log-variance interpretation, but since
-        ``fixing.md`` #10 (Round 2) every NLL architecture — including
+        Round 2 every NLL architecture — including
         ``efficientnet_unet_nll`` — is trained as a Laplace log-scale
         (``scripts.losses.laplace_nll_loss``) instead; the field is kept
         under its original name rather than renamed to ``NLL_LOG_SCALE_MIN``
@@ -140,7 +140,7 @@ class Settings(BaseSettings):
         Upper clip bound, see above.
     FINETUNE_LEARNING_RATE : float
         Adam learning rate for phase 2 of EfficientNet's two-phase
-        fine-tuning (``fixing.md`` #6, Round 2): once the decoder has
+        fine-tuning (Round 2): once the decoder has
         converged against the frozen pretrained encoder (phase 1, plain
         ``LEARNING_RATE``), phase 2 unfreezes the encoder
         (``freeze_encoder=False``) and continues training the whole

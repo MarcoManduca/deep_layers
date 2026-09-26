@@ -442,7 +442,7 @@ def laplace_sigma_from_scale(b: np.ndarray) -> np.ndarray:
     architecture's second channel. Use this (not the Gaussian formula) to
     get a true standard deviation from `unet_nll`/`resunet_nll`/
     `attention_unet_nll` predictions before passing it to any function in
-    this module that expects ``sigma`` (``fixing.md`` #10).
+    this module that expects ``sigma``.
 
     Parameters
     ----------
