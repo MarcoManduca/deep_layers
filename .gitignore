@@ -56,5 +56,8 @@ biblio/
 # Paper drafts and reference PDFs (stored locally, not versioned)
 paper_deep-layer/
 
+# Course-theory notes (kept local, not published)
+theory-links.md
+
 # IDE
 .vscode/
