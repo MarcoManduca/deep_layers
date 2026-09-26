@@ -57,9 +57,7 @@ def test_split_has_no_artwork_leakage_between_train_and_val() -> None:
 
 
 def test_all_mockup_pairs_are_in_every_fold_train_set() -> None:
-    mockup_pairs = {
-        p for p in PAIRS if p[0].stem.rsplit("_sezione_", 1)[0] in MOCKUPS
-    }
+    mockup_pairs = {p for p in PAIRS if p[0].stem.rsplit("_sezione_", 1)[0] in MOCKUPS}
     for train, _ in grouped_kfold_splits(PAIRS, k=3, mockup_ids=MOCKUPS, seed=42):
         assert mockup_pairs.issubset(set(train))
 
