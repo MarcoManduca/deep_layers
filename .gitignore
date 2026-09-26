@@ -52,3 +52,9 @@ biblio/
 
 # zip files
 *.zip
+
+# Paper drafts and reference PDFs (stored locally, not versioned)
+paper_deep-layer/
+
+# IDE
+.vscode/
